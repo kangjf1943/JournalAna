@@ -1,0 +1,91 @@
+---
+title: "Report"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+```
+
+## 概述
+
+**分析尺度：粒度和聚合**
+至少有三种分析基本单元：单篇文章，单卷，或者是每年的集合。
+目前先按照单卷为基本分析单元进行数据分析。
+
+**进行了哪些分析**
+目前的分析和
+主要包括三方面：基本描述，如发文数量 - 各卷有多少论文，各年发文多少等；词频相关分析 - 包括绝对词频和各单元内各词语的相对重要性，之后可以补充词语之间关系的分析，如做共现图；主题分析 - 看各卷或者各年份文章可以分成哪些主题，各分析单元主要属于哪些主题。其中，其实词频和主题分析是相辅相成的，都是为了分析各基本分析单元的主要内容。
+
+## 分析及结果
+
+### 一般描述
+
+以各卷发文为例：
+
+```{r NumChg}
+sapply(xmls_10, nrow) %>% 
+  plot(type = "l")
+```
+
+### 词频分析
+
+各卷各词的词频绝对值 - 也可以通过词云表示，但是条形图比较规范：
+
+```{r WordCount, fig.height=9}
+# 输出绝对词频前10位的词及对应的图
+tfidf_10 %>%
+  group_by(doc) %>%
+  slice_max(n, n = 10) %>%
+  ungroup() %>%
+  ggplot() +
+  geom_col(aes(n, fct_reorder(word, n))) +
+  facet_wrap(~ doc, ncol = 2, scales = "free") +
+  labs(x = "tf-idf", y = NULL)
+# 待办：需要排除各卷共有的词，以显示区别，以及消除用词频率和论文数量的影响
+```
+
+而df-idf的结果和它有所不同 - 这个分析方法的主要逻辑是找出各分析单元文本内容的特殊之处，换句话说，如果有个词在各个分析单元文本中都出现，那就算出现再多次，也是不重要的词语：
+
+```{r tf-idf, fig.height=9}
+# 输出tf-idf前10位的词及对应的图
+tfidf_10 %>%
+  group_by(doc) %>%
+  slice_max(tf_idf, n = 10) %>%
+  ungroup() %>%
+  ggplot() +
+  geom_col(aes(tf_idf, fct_reorder(word, tf_idf))) +
+  facet_wrap(~ doc, ncol = 2, scales = "free") +
+  labs(x = "tf-idf", y = NULL)
+```
+
+## 主题模型分析
+
+文本全体是主题的混合，先看看所有文本能够被分成哪几个主题。先设置主题数为5个进行划分：
+
+```{r Topics}
+topic_10_beta %>% 
+  group_by(topic) %>% 
+  slice_max(beta, n = 10) %>% 
+  ungroup() %>% 
+  mutate(term = reorder_within(term, beta, topic)) %>% 
+  ggplot(aes(beta, term)) + 
+  geom_col() + 
+  facet_wrap(~ topic, scales = "free")
+```
+
+根据结果很难说各个主题主要是关于什么，可能因为各卷中本身包含了各个主题的论文，所以将这些文本混合起来后拉平了这种差异，所以可以回到上文最开始提到的分析尺度的话题：可能应该以单篇论文作为基本分析单元来划分主题，然后再统计各卷或者各年份不同主题的论文的数量或占比。
+
+虽然主题之间的差异难以通过人类常识区分，但是我们还是看看各卷分别属于哪个主题下：
+
+```{r DocTopic}
+topic_10_gamma %>% 
+  ggplot(aes(topic, gamma)) + 
+  geom_col() + 
+  facet_wrap(~document)
+```
+
+意外的是，区分度好像还挺高。
+
+## 其他分析
+待续。
