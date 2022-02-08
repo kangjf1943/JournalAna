@@ -9,7 +9,11 @@ library(topicmodels)
 
 # Setting ----
 set_oridir <- getwd()
+# 载入停止词并且添加自定义停止词
 data("stop_words")
+stop_words <- stop_words %>% 
+  rbind(tibble(word = c("research", "result"), 
+               lexicon = "user"))
 
 # Data import ----
 # 函数：获取某个xml文件中的目标属性数据
@@ -198,6 +202,43 @@ topic_10_gamma <- tidy(lda_10, matrix = "gamma")
 
 topic_10_gamma %>% 
   ggplot() + 
-  geom_line(aes(topic, gamma)) + 
+  geom_col(aes(topic, gamma)) + 
   facet_wrap(~document)
 
+## Article as basic unit ----
+# 待办：以10年第一卷为例分析
+# 构建一词一行规范数据
+tidy_10_1 <- xmls_10$`10-1` %>% 
+  select(doi, abstract) %>% 
+  mutate(abstract = as.character(abstract)) %>%
+  unnest_tokens(word, abstract) %>% 
+  anti_join(stop_words) %>% 
+  count(doi, word, sort = TRUE)
+
+# 直接做主题模型
+# 生成DTM矩阵
+dtm_10_1 <- tidy_10_1 %>% 
+  cast_dtm(doi, word, n)
+
+# 通过LDA模型划分主题
+lda_10_1 <- LDA(dtm_10_1, k = 5, control = list(seed = 1234))
+
+# 读取LDA模型结果
+topic_10_1_beta <- tidy(lda_10_1, matrix = "beta")
+topic_10_1_gamma <- tidy(lda_10_1, matrix = "gamma")
+
+# 可视化主题结果：各个主题主要有哪些关键词
+topic_10_1_beta %>% 
+  group_by(topic) %>% 
+  slice_max(beta, n = 15) %>% 
+  ungroup() %>% 
+  mutate(term = reorder_within(term, beta, topic, sep = "-")) %>% 
+  ggplot() + 
+  geom_col(aes(beta, term)) + 
+  facet_wrap(~topic, scales = "free")
+
+# 计算本卷总体主题倾向：加总各个主题的概率值
+topic_10_1_gamma %>% 
+  group_by(topic) %>% 
+  summarise(score = sum(gamma)) %>%
+  ungroup()
