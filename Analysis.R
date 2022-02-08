@@ -12,7 +12,7 @@ set_oridir <- getwd()
 # 载入停止词并且添加自定义停止词
 data("stop_words")
 stop_words <- stop_words %>% 
-  rbind(tibble(word = c("research", "result"), 
+  rbind(tibble(word = c("research", "result", "results", "study"), 
                lexicon = "user"))
 
 # Data import ----
@@ -218,7 +218,8 @@ tidy_10_1 <- xmls_10$`10-1` %>%
 # 直接做主题模型
 # 生成DTM矩阵
 dtm_10_1 <- tidy_10_1 %>% 
-  cast_dtm(doi, word, n)
+  drop_na() %>%
+  cast_dtm(document = doi, term = word, value = n)
 
 # 通过LDA模型划分主题
 lda_10_1 <- LDA(dtm_10_1, k = 5, control = list(seed = 1234))
