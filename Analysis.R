@@ -18,6 +18,7 @@ stop_words <- stop_words %>%
 # Data import ----
 # 函数：获取某个xml文件中的目标属性数据
 # 输入：文件名
+# 输出：列表
 fun_getxml <- function(x) {
   # 获取一篇文章中的全部原始数据
   # 待办：为了排除无法解析的xml，此处用try()函数
@@ -63,13 +64,15 @@ fun_getxml <- function(x) {
 
 # 函数：批量获取xml文件的目标属性数据
 # 输入：目标文件夹
+# 输出：包含tibble的列表
 fun_getxmls <- function(xpath) {
   # 构建列表用于暂存各个xml文件
   xml_ls <- vector("list", 4)
   names(xml_ls) <- c("doi", "abstract", "fulltext", "ref")
   
-  # 提取各个xml文件的信息并将其储存到xml_ls列表中
+  # 提取所有xml文件名并忽略meta数据
   xml_names <- dir(xpath)
+  xml_names <- xml_names[!grepl("meta", xml_names)]
   setwd(xpath)
   for (x in xml_names) {
     single_xml <- fun_getxml(x)
@@ -79,35 +82,38 @@ fun_getxmls <- function(xpath) {
   }
   setwd(set_oridir)
   
-  # 构建数据框用于存储结果并输出
+  # 构建数据框用于存储结果
   output <- data.frame(
     doi = xml_ls[["doi"]], 
     abstract = xml_ls[["abstract"]], 
     fulltext= xml_ls[["fulltext"]], 
     ref = xml_ls[["ref"]]
   )
+  
+  # 将结果转化为tibble格式并输出
+  output <- as_tibble(output)
   return(output)
 }
 
-# 测试：读取10年所有信息并做分析
+# 读取文件夹中所有xml文件并做分析
 xmlfiles <- dir("RawData/XmlData")
 
 # 构建列表存放10年各卷数据
-xmls_10 <- vector("list", length(xmlfiles))
-names(xmls_10) <- xmlfiles
+text_ls <- vector("list", length(xmlfiles))
+names(text_ls) <- xmlfiles
 
 # 遍历读取xml文件夹中的所有文件
 for (i in xmlfiles) {
-  xmls_10[[i]] <- fun_getxmls(paste0("RawData/XmlData/", i))
+  text_ls[[i]] <- fun_getxmls(paste0("RawData/XmlData/", i))
 }
 
-# Analysis ----
-## General description ----
+# General description ----
 # 各卷论文数量
-# 待办：未涵盖因无法解析被排除的xml文件数量
-sapply(xmls_10, nrow) %>% 
+# 待办：未涵盖因无法解析被排除的xml文件，其实也就10-4和10-6文件夹中各1个文件
+sapply(text_ls, nrow) %>% 
   plot(type = "l")
 
+# Volume-based analysis ----
 ## Term frequency ----
 # 基于摘要内容分析各卷tf-idf变化
 
@@ -131,22 +137,22 @@ fun_wordcount <- function(x, col_abstract, col_doc) {
 }
 
 # 生成各卷对应的tf-idf数据框
-tfidf_10 <- vector("list", length(xmlfiles))
-names(tfidf_10) <- xmlfiles
+tfidf <- vector("list", length(xmlfiles))
+names(tfidf) <- xmlfiles
 
-tidy_10 <- vector("list", length(xmlfiles))
-names(tidy_10) <- xmlfiles
+tidy_ls <- vector("list", length(xmlfiles))
+names(tidy_ls) <- xmlfiles
 
 for (i in xmlfiles) {
-  tidy_10[[i]] <- fun_wordcount(xmls_10[[i]], "abstract", i)
+  tidy_ls[[i]] <- fun_wordcount(text_ls[[i]], "abstract", i)
 }
 
-tfidf_10 <- Reduce(rbind, tidy_10) %>% 
+tfidf <- Reduce(rbind, tidy_ls) %>% 
   bind_tf_idf(word, doc, n) %>% 
   arrange(desc(tf_idf))
 
 # 输出绝对词频前10位的词及对应的图
-tfidf_10 %>%
+tfidf %>%
   group_by(doc) %>%
   slice_max(n, n = 10) %>%
   ungroup() %>%
@@ -157,7 +163,7 @@ tfidf_10 %>%
 # 待办：需要排除各卷共有的词，以显示区别，以及消除用词频率和论文数量的影响
 
 # 输出tf-idf前10位的词及对应的图
-tfidf_10 %>%
+tfidf %>%
   group_by(doc) %>%
   slice_max(tf_idf, n = 10) %>%
   ungroup() %>%
@@ -174,10 +180,10 @@ tfidf_10 %>%
 
 ## Topic model ----
 # 将各卷词频统计混合起来
-tidy_10_df <- Reduce(rbind, tidy_10)
+tidy_ls_df <- Reduce(rbind, tidy_ls)
 
 # 生成term-document matrix
-dtm_10_df <- cast_dtm(tidy_10_df, doc, word, n)
+dtm_10_df <- cast_dtm(tidy_ls_df, doc, word, n)
 
 # 主题分析
 lda_10 <- LDA(dtm_10_df, k = length(xmlfiles), control = list(seed = 1234))
@@ -205,41 +211,121 @@ topic_10_gamma %>%
   geom_col(aes(topic, gamma)) + 
   facet_wrap(~document)
 
-## Article as basic unit ----
-# 待办：以10年第一卷为例分析
-# 构建一词一行规范数据
-tidy_10_1 <- xmls_10$`10-1` %>% 
-  select(doi, abstract) %>% 
-  mutate(abstract = as.character(abstract)) %>%
-  unnest_tokens(word, abstract) %>% 
-  anti_join(stop_words) %>% 
-  count(doi, word, sort = TRUE)
+# Article-based analysis ----
+## Term frequency ----
+# 基于摘要内容分析各卷tf-idf变化
 
-# 直接做主题模型
-# 生成DTM矩阵
-dtm_10_1 <- tidy_10_1 %>% 
-  drop_na() %>%
-  cast_dtm(document = doi, term = word, value = n)
+# 函数：词频统计
+# 输入：带有文本内容列的数据框
+# 输出：各篇文章词语计数规范数据
+fun_wordcount <- function(x, col_abstract, col_doc) {
+  # 摘要列分词
+  x[[col_abstract]] <- as.character(x[[col_abstract]])
+  tidy_abstract <- x %>% 
+    unnest_tokens(word, abstract) %>%
+    count(doi, word, sort = TRUE) %>% 
+    mutate(doc = col_doc) %>% 
+    select(doc, doi, word, n)
+  
+  # 删除停止词
+  tidy_abstract <- tidy_abstract %>% 
+    anti_join(stop_words)
+  
+  return(tidy_abstract)
+}
 
-# 通过LDA模型划分主题
-lda_10_1 <- LDA(dtm_10_1, k = 5, control = list(seed = 1234))
+# 生成各文章对应的tf-idf数据框
+# 测试：先测试部分数据
+xmlfiles <- xmlfiles[1:6]
 
-# 读取LDA模型结果
-topic_10_1_beta <- tidy(lda_10_1, matrix = "beta")
-topic_10_1_gamma <- tidy(lda_10_1, matrix = "gamma")
+tfidf <- vector("list", length(xmlfiles))
+names(tfidf) <- xmlfiles
 
-# 可视化主题结果：各个主题主要有哪些关键词
-topic_10_1_beta %>% 
+tidy_ls <- vector("list", length(xmlfiles))
+names(tidy_ls) <- xmlfiles
+
+for (i in xmlfiles) {
+  tidy_ls[[i]] <- fun_wordcount(text_ls[[i]], "abstract", i)
+}
+
+tfidf <- Reduce(rbind, tidy_ls) %>% 
+  bind_tf_idf(word, doi, n) %>% 
+  arrange(desc(tf_idf))
+
+# 输出绝对词频前10位的词及对应的图
+# tfidf %>%
+#   group_by(doc) %>%
+#   slice_max(n, n = 10) %>%
+#   ungroup() %>%
+#   ggplot() +
+#   geom_col(aes(n, fct_reorder(word, n))) +
+#   facet_wrap(~ doc, ncol = 2, scales = "free") +
+#   labs(x = "tf-idf", y = NULL)
+# 待办：如果输出每篇文章前10位的词语，结果就太长了
+
+# 输出tf-idf前10位的词及对应的图
+# tfidf %>%
+#   group_by(doc) %>%
+#   slice_max(tf_idf, n = 10) %>%
+#   ungroup() %>%
+#   ggplot() +
+#   geom_col(aes(tf_idf, fct_reorder(word, tf_idf))) +
+#   facet_wrap(~ doc, ncol = 2, scales = "free") +
+#   labs(x = "tf-idf", y = NULL)
+# 待办：如果输出每篇文章前10位的词语，结果就太长了
+
+## Topic model ----
+# 将各卷词频统计混合起来
+tidy_ls_df <- Reduce(rbind, tidy_ls)
+
+# 生成term-document matrix
+dtm_10_df <- cast_dtm(tidy_ls_df, doi, word, n)
+
+# 主题分析
+lda_10 <- LDA(dtm_10_df, k = length(xmlfiles), control = list(seed = 1234))
+lda_10
+
+# 转化成可阅读的主题数据框
+topic_10_beta <- tidy(lda_10, matrix = "beta")
+
+# 取前十位可视化
+topic_10_beta %>% 
   group_by(topic) %>% 
-  slice_max(beta, n = 15) %>% 
+  slice_max(beta, n = 10) %>% 
   ungroup() %>% 
-  mutate(term = reorder_within(term, beta, topic, sep = "-")) %>% 
-  ggplot() + 
-  geom_col(aes(beta, term)) + 
-  facet_wrap(~topic, scales = "free")
+  mutate(term = reorder_within(term, beta, topic)) %>% 
+  ggplot(aes(beta, term)) + 
+  geom_col() + 
+  facet_wrap(~ topic, scales = "free")
+# 待办：结果区分度不明显
 
-# 计算本卷总体主题倾向：加总各个主题的概率值
-topic_10_1_gamma %>% 
-  group_by(topic) %>% 
-  summarise(score = sum(gamma)) %>%
+# 各篇文章属于各个主题的概率
+topic_10_gamma <- tidy(lda_10, matrix = "gamma") %>% 
+  rename(doi = document)
+
+# topic_10_gamma %>% 
+#   ggplot() + 
+#   geom_col(aes(topic, gamma)) + 
+#   facet_wrap(~ doi)
+# 待办：文章数量太多，无法把每个图都画出来
+
+# 计算各卷在各个主题上的得分
+# 加入各文章所属卷信息
+for (i in 1:length(text_ls)) {
+  text_ls[[i]]$vol <- names(text_ls[i])
+}
+text_df <- Reduce(rbind, text_ls)
+topic_10_gamma <- topic_10_gamma %>% 
+  left_join(select(text_df, doi, vol), by = "doi")
+
+# 计算各卷各主题得分
+topic_10_gammascore_vol <- topic_10_gamma %>% 
+  group_by(topic, vol) %>% 
+  summarise(score = sum(gamma)) %>% 
   ungroup()
+
+# 可视化各卷各主题得分
+ggplot(topic_10_gammascore_vol) + 
+  geom_col(aes(topic, score)) + 
+  facet_wrap(.~ vol)
+
