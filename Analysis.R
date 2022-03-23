@@ -329,3 +329,34 @@ ggplot(topic_10_gammascore_vol) +
   geom_col(aes(topic, score)) + 
   facet_wrap(.~ vol)
 
+# Special issue-based analysis ----
+# 从结果来看各卷在各主题上的得分还比较均衡，那如果是按照特刊来做主题模型分类呢？
+si_info <- read.csv("RawData/doi_si_section.csv") %>% 
+  rename_with(tolower) %>% 
+  as_tibble()
+
+# 合并主题模型结果和各文章所属特刊信息
+topic_10_gamma <- topic_10_gamma %>% 
+  left_join(si_info, by = "doi")
+# 待办：存在不属于任何特刊的文章可以理解，但是否有不属于任何section的文章？
+
+# 计算各特刊各主题得分
+topic_10_gammascore_si <- topic_10_gamma %>% 
+  group_by(topic, si) %>% 
+  summarise(score = sum(gamma)) %>% 
+  ungroup()
+
+# 可视化各卷各主题得分
+# 待办：由于涉及特刊太多，无法把每个图都可视化出来
+
+# 计算各section各主题得分
+topic_10_gammascore_section <- topic_10_gamma %>% 
+  group_by(topic, section) %>% 
+  summarise(score = sum(gamma)) %>% 
+  ungroup()
+
+# 可视化各卷各主题得分
+ggplot(topic_10_gammascore_section) + 
+  geom_col(aes(topic, score)) + 
+  facet_wrap(.~ section)
+
