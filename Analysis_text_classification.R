@@ -1,11 +1,11 @@
 library(RTextTools)
 
-# 以单个特刊为基本单位进行分析
+# 以单个特刊为基本单位进行分析 ----
 # 假设对已有section信息的特刊的归类是合理的，以这些特刊为训练数据集，对没有section信息的特刊进行分类
 
-# 构建文本及其分类的数据集
-# 构建函数：从给定section的si名称中，抽取20%作为测试集
-# 输入：带有section和si的数据框
+# 将文档数据集分成训练集和测试集
+# 构建函数：从各个section中，抽取20%作为测试集
+# 输入：带有abstract和section列的数据框
 # 输出：带有基于分组抽样选定训练集、测试集、待分类标签列的数据
 fun_testsample <- function(x) {
   # 分为两部分：section已知和未知
@@ -16,23 +16,20 @@ fun_testsample <- function(x) {
   # section信息已知的部分
   x_known <- subset(x, !is.na(section))
   
-  # 对各section进行循环
-  section_names <- unique(x_known$section)
-  # 先构建列表用于存储结果
-  x_known_ls <- vector("list", length(section_names))
-  names(x_known_ls) <- section_names
+  # 对section信息已知部分的各section抽80%作为训练集
+  x_known_train <- x_known %>% 
+    group_by(section) %>% 
+    slice_sample(prop = 0.8) %>% 
+    ungroup() %>% 
+    mutate(set = "train")
   
-  for (i in section_names) {
-    # 切片：特定section的数据子集
-    x_known_ls[[i]] <- subset(x_known, section == i)
-    x_known_ls[[i]]$set <- "test"
-    # 抽样：80%为测试集
-    train_entry <- sample(x_known_ls[[i]]$si, 0.8*nrow(x_known_ls[[i]]))
-    x_known_ls[[i]]$set[which(x_known_ls[[i]]$si %in% train_entry)] <- "train"
-  }
+  # 其他的则作为测试集
+  x_known_test <- x_known %>% 
+    anti_join(x_known_train) %>% 
+    mutate(set = "test")
   
   # 合并列表并输出
-  x_output <- rbind(Reduce(rbind, x_known_ls), x_unknown)
+  x_output <- Reduce(rbind, list(x_known_train, x_known_test, x_unknown))
   return(x_output)
 }
 
@@ -118,4 +115,5 @@ svm_res_unknown <- fun_textclass(text_df, c("train", "test"), "unknown")
 ggplot(svm_res_unknown) + 
   geom_col(aes(SVM_LABEL, 1)) + 
   theme(axis.text.x = element_text(angle = 90))
+
 
