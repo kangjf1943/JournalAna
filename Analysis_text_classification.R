@@ -96,18 +96,24 @@ table(svm_res$correct)
 ggplot(svm_res) + 
   geom_boxplot(aes(correct, SVM_PROB)) 
 
-# 各样本量之间的关系
-plt_size_sec <- ggplot(text_df[!is.na(text_df$section), ]) + 
-  geom_col(aes(section, 1)) + 
-  theme(axis.text.x = element_blank())
-# 查看不同section的准确率差异和实际判断正误率的差异
-plt_prob_sec <- ggplot(svm_res) + 
-  geom_boxplot(aes(section, SVM_PROB)) + 
-  theme(axis.text.x = element_blank())
-plt_correct_sec <- ggplot(svm_res) + 
-  geom_col(aes(section, factor(correct), fill = correct)) + 
-  theme(axis.text.x = element_text(angle = 90))
-plt_size_sec / plt_prob_sec / plt_correct_sec
+# 函数：生成分类结果诊断图
+# 输入：x_text_df，带各分析单元索虎section信息的数据框；x_svm_res，分类结果数据框
+# 输出：分类结果诊断图，包括各section样本数量、各section分类确定率、各section实际分类准确率
+fun_pltclass <- function(x_text_df, x_svm_res) {
+  # 各样本量之间的关系
+  plt_size_sec <- ggplot(x_text_df[!is.na(x_text_df$section), ]) + 
+    geom_col(aes(section, 1)) + 
+    theme(axis.text.x = element_blank())
+  # 查看不同section的准确率差异和实际判断正误率的差异
+  plt_prob_sec <- ggplot(x_svm_res) + 
+    geom_boxplot(aes(section, SVM_PROB)) + 
+    theme(axis.text.x = element_blank())
+  plt_correct_sec <- ggplot(x_svm_res) + 
+    geom_col(aes(section, factor(correct), fill = correct)) + 
+    theme(axis.text.x = element_text(angle = 90))
+  plt_size_sec / plt_prob_sec / plt_correct_sec
+}
+fun_pltclass(text_df, svm_res)
 
 # 对未归类特刊进行分类
 svm_res_unknown <- fun_textclass(text_df, c("train", "test"), "unknown")
