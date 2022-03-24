@@ -116,7 +116,7 @@ fun_pltclass <- function(x_text_df, x_svm_res) {
 fun_pltclass(text_df, svm_res)
 
 # 对未归类特刊进行分类
-svm_res_unknown <- fun_textclass(text_df, c("train", "test"), "unknown")
+svm_res_unknown <- fun_textclass(text_df, "train", "unknown")
 # 看看自动分类的数量分布
 ggplot(svm_res_unknown) + 
   geom_col(aes(SVM_LABEL, 1)) + 
