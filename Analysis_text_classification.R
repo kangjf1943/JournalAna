@@ -1,10 +1,14 @@
 library(RTextTools)
 
-# 以单个特刊为基本单位进行分析 ----
-# 假设对已有section信息的特刊的归类是合理的，以这些特刊为训练数据集，对没有section信息的特刊进行分类
+# Data import ----
+# 读取董构建的doi-section-si数据
+si_info <- read.csv("RawData/doi_si_section.csv") %>% 
+  rename_with(tolower)
 
-# 将文档数据集分成训练集和测试集
-# 构建函数：从各个section中，抽取20%作为测试集
+# Function ----
+
+# 函数：将数据集分成训练集和测试集
+# 概述：从各个section中，抽取20%作为测试集
 # 输入：带有abstract和section列的数据框
 # 输出：带有基于分组抽样选定训练集、测试集、待分类标签列的数据
 fun_testsample <- function(x) {
@@ -32,28 +36,6 @@ fun_testsample <- function(x) {
   x_output <- Reduce(rbind, list(x_known_train, x_known_test, x_unknown))
   return(x_output)
 }
-
-# 读取董构建的doi-section-si数据
-si_info <- read.csv("RawData/doi_si_section.csv") %>% 
-  rename_with(tolower)
-# 合并各卷论文数据
-# 董构建的特刊数据集结果包含2456本特刊，而目前分析的各卷文章共包含于1107本特刊中
-# 待办：text_ls是由Analysis.R构建的数据
-text_df <- Reduce(rbind, text_ls) %>% 
-  select(-fulltext, - ref) %>% 
-  # 接入secssion和si数据
-  left_join(si_info, by = "doi") %>% 
-  # 合并同一特刊中的摘要
-  group_by(section, si) %>% 
-  summarise(abstract = paste0(abstract, collapse = "")) %>% 
-  ungroup() %>% 
-  # 去除非特刊投稿
-  subset(!is.na(si)) %>% 
-  #去除重复特刊名：有3份特刊被同时归入“无分类”及某些特刊中
-  subset(!duplicated(.$si)) %>% 
-  .[order(.$section, na.last = TRUE), ] %>% 
-  # 将数据分成训练集、测试集、待分类数据
-  fun_testsample()
 
 # 构建函数：基于支持向量机对文档进行分类
 # 输入：文本及其分类数据框，带有各条数据性质的列
@@ -85,6 +67,27 @@ fun_textclass <- function(x, names_train, names_test) {
   
   return(svm_res)
 }
+
+# 以单个特刊为基本单位进行分析 ----
+# 假设对已有section信息的特刊的归类是合理的，以这些特刊为训练数据集，对没有section信息的特刊进行分类
+# 合并各卷论文数据并将各条目分成训练集和测试集
+# 董构建的特刊数据集结果包含2456本特刊，而目前分析的各卷文章共包含于1107本特刊中
+# 待办：text_ls是由Analysis.R构建的数据
+text_df <- Reduce(rbind, text_ls) %>% 
+  select(-fulltext, - ref) %>% 
+  # 接入secssion和si数据
+  left_join(si_info, by = "doi") %>% 
+  # 合并同一特刊中的摘要
+  group_by(section, si) %>% 
+  summarise(abstract = paste0(abstract, collapse = "")) %>% 
+  ungroup() %>% 
+  # 去除非特刊投稿
+  subset(!is.na(si)) %>% 
+  #去除重复特刊名：有3份特刊被同时归入“无分类”及某些特刊中
+  subset(!duplicated(.$si)) %>% 
+  .[order(.$section, na.last = TRUE), ] %>% 
+  # 将数据分成训练集、测试集、待分类数据
+  fun_testsample()
 
 # 评价模型质量 ----
 svm_res <- fun_textclass(text_df, "train", "test")
