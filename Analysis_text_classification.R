@@ -39,7 +39,7 @@ fun_testsample <- function(x) {
 # 函数：基于支持向量机对文档进行分类
 # 输入：文本及其分类数据框，带有各条数据性质的列
 # 输出：测试或者待分类条目的分类结果
-fun_textclass <- function(x, names_train, names_test) {
+fun_textclass <- function(x, nq_ana_unit, names_train, names_test) {
   # 根据选入的训练数据和测试数据选取输入数据框的子集
   x <- subset(x, set %in% c(names_train, names_test))
   
@@ -47,10 +47,11 @@ fun_textclass <- function(x, names_train, names_test) {
   # 构建各文本文档对应的各词语数据框
   term_df <- unnest_tokens(x, word, abstract)
   # 对各词语计数
-  word_count <- count(term_df, section, si, word, sort = TRUE) %>% 
+  word_count <- count(term_df, section, {{nq_ana_unit}}, word, sort = TRUE) %>% 
     .[order(.$section, na.last = TRUE), ]
   # 建立DTM矩阵
-  dtm <- cast_dtm(word_count, si, word, n)
+  dtm <- cast_dtm(word_count, {{nq_ana_unit}}, word, n)
+  
   # 建立包含训练数据和待测试数据的container
   # 根据set列的数据性质区分训练数据和测试数据
   container <- create_container(
@@ -60,10 +61,10 @@ fun_textclass <- function(x, names_train, names_test) {
     virgin = FALSE)
   # 生成支持向量机分类模型
   svm_model <- train_model(container, "SVM")
-  # 生成分类结果
+  
+  # 生成并返回分类结果
   svm_res <- classify_model(container, svm_model) %>% 
     cbind(x[x$set %in% names_test, ])
-  
   return(svm_res)
 }
 
@@ -90,7 +91,7 @@ fun_pltclass <- function(x_text_df, x_svm_res) {
 # 合并各卷论文数据并将各条目分成训练集和测试集
 # 董构建的特刊数据集结果包含2456本特刊，而目前分析的各卷文章共包含于1107本特刊中
 # 待办：text_ls是由Analysis.R构建的数据
-sb_text_df <- Reduce(rbind, sb_text_ls) %>% 
+sb_text_df <- Reduce(rbind, text_ls) %>% 
   select(-fulltext, - ref) %>% 
   # 接入secssion和si数据
   left_join(si_info, by = "doi") %>% 
@@ -106,8 +107,8 @@ sb_text_df <- Reduce(rbind, sb_text_ls) %>%
   # 将数据分成训练集、测试集、待分类数据
   fun_testsample()
 
-# 评价模型质量 ----
-sb_svm_res <- fun_textclass(sb_text_df, "train", "test")
+# 评价模型质量
+sb_svm_res <- fun_textclass(sb_text_df, si, "train", "test")
 
 # 看分类结果和实际结果是否一致：是否一致跟模型质量有关，也跟原本分类是否合理有关
 sb_svm_res$correct <- sb_svm_res$SVM_LABEL == sb_svm_res$section
@@ -116,12 +117,48 @@ table(sb_svm_res$correct)
 ggplot(sb_svm_res) + 
   geom_boxplot(aes(correct, SVM_PROB)) 
 
-fun_pltclass(sb_text_df, sb_svm_res)
+sb_class_plts <- fun_pltclass(sb_text_df, sb_svm_res)
+sb_class_plts
 
 # 对未归类特刊进行分类
-sb_svm_res_unknown <- fun_textclass(text_df, "train", "unknown")
+sb_svm_res_unknown <- fun_textclass(sb_text_df, si, "train", "unknown")
 # 看看自动分类的数量分布
 ggplot(sb_svm_res_unknown) + 
+  geom_col(aes(SVM_LABEL, 1)) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+# 以单篇文章为基本单位进行分析 ----
+# 合并各卷论文数据
+# 待办：text_ls是由Analysis.R构建的数据
+ab_text_df <- Reduce(rbind, text_ls) %>% 
+  select(-fulltext, - ref) %>% 
+  # 接入secssion和si数据
+  left_join(si_info, by = "doi") %>% 
+  # 去除非特刊投稿
+  subset(!is.na(si)) %>% 
+  # 待办：去除重复特刊名：有3份特刊被同时归入“无分类”及某些特刊中
+  # subset(!duplicated(.$si)) %>% 
+  .[order(.$section, na.last = TRUE), ] %>% 
+  # 将数据分成训练集、测试集、待分类数据
+  fun_testsample()
+
+# 评价模型质量
+ab_svm_res <- fun_textclass(ab_text_df, doi, "train", "test")
+
+# 看分类结果和实际结果是否一致：是否一致跟模型质量有关，也跟原本分类是否合理有关
+ab_svm_res$correct <- ab_svm_res$SVM_LABEL == ab_svm_res$section
+table(ab_svm_res$correct)
+# 查看分类正确组合错误组之间模型确定率的关系
+ggplot(ab_svm_res) + 
+  geom_boxplot(aes(correct, SVM_PROB)) 
+
+ab_class_plts <- fun_pltclass(ab_text_df, ab_svm_res)
+ab_class_plts
+
+# 对未归类特刊进行分类
+ab_svm_res_unknown <- fun_textclass(ab_text_df, doi, "train", "unknown")
+# 看看自动分类的数量分布
+ggplot(ab_svm_res_unknown) + 
   geom_col(aes(SVM_LABEL, 1)) + 
   theme(axis.text.x = element_text(angle = 90))
 
