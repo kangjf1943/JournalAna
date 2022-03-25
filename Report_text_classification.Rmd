@@ -1,0 +1,69 @@
+---
+title: "Report"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+```
+
+## 概述
+
+分别以单卷特刊和单篇文章为分析单元，采用支持向量机，基于已有section分类信息的特刊摘要信息，训练并生成文档分类模型。然后用该模型对section信息未知的特刊或文章条目进行分类，赋予他们section信息。
+以下分析内容展示两部分：第一部分是看看训练生成的文档分类模型质量怎样；第二部分是将模型应用于那些没有section信息的特刊条目，给它们找妈妈-添加section信息。
+
+## 模型质量评价
+
+从每个section中抽取80%作为训练数据，20%作为测试数据，看看评价结果和实际分类结果的一致性如何。不过需要注意，这里其实是假定已有section信息的特刊分类方式都是合理的。这个假设和董桑之前说的“有些特刊分类并不合理”是矛盾的，所以后面可以考虑如何优化训练数据集。
+
+看看以单卷特刊为单元的分析结果中，各个section的数据和结果：
+
+```{r fig.height=12}
+sb_class_plts
+```
+
+和以单篇文章为单元的分析结果对比：
+
+```{r fig.height=12}
+ab_class_plts
+```
+
+首先，为什么要看这些数据：
+
+- 样本量：模型分类结果的准确度可能和样本量有关，如果样本涵盖范围足够的话，应该样本量越大，分类的准确度越高。对于有些section，比如“Economic and Business Aspects of Sustainability”和“Environmental Sustainability and Applications”，确实如此；但是有些样本量高的分类效果并不好，如“Energy Sustainability”和“Tourism, Culture, and Heritage”。
+
+- 把握度：这是模型自己对分类结果准确度的“把握”，结合下面的实际准确率来看，模型对分类结果准确率的把握还是有点偏差的，比如对“Sustainable Urban and Rural Development”，模型觉得自己分类不好，但实际上分类效果不错；而“Sustainable Chemical Engineering and Technology”，模型觉得自己分类做得不错，实际上不怎么样。
+
+- 正确率：实际上各section分类结果的正确率。总体正确率只有50%左右，而且各个对section的正确率有差异。
+
+其次，以单卷特刊为单元的分析结果（下面简称SI分析）和以单篇文章为单元的分析结果（下面简称A分析）有何不同：
+
+- 样本量：虽然SI分析和A分析中，各个section的样本量（对于SI分析而言是各个section的特刊数量，对于A分析而言是各个section的文章数量）分布有差异，但总体来说格局比较一致，比如第2-4个section的特刊和文章数量都多，而第5-11个section对应的数量都少。
+
+- 把握度：<span style="color:red">有意思的地方出现了</span>，SI分析中，模型对自己判断的把握程度评价是偏低的，不是很有自信，但是A分析中，模型对自己很有把握，除了对section为“Tourism, Culture, and Heritage”外，其他section的判断把握度中位数都接近100%，可以部分佐证两点：即使是同一本特刊内，文章的差异性也是不能忽略的；基于单篇文章的分析，精细度较高，精确度可能也随之提高了。
+
+- 正确率：看看那些训练样本量较大的section，可见A分析相比于SI分析来说，正确率确实提高了；但是也有点打脸的是，对于训练样本量少的section，虽然模型更加自信了，但是正确率似乎还是很低。
+
+## 实际应用
+
+为了保持模型的一致性和分析的严谨性，和上一版不同地，这里将采用上一节测评相同的文档分类模型，对不含section信息的条目进行分类。展示分类结果的分布如下。
+
+SI分析的结果：
+
+```{r}
+ggplot(sb_svm_res_unknown) + 
+  geom_col(aes(SVM_LABEL, 1)) + 
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+A分析的结果：
+
+```{r}
+ggplot(ab_svm_res_unknown) + 
+  geom_col(aes(SVM_LABEL, 1)) + 
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+## 下一步
+
+这里展示的支持向量机模型分类其实是一种“预分类”的方法，而传统文档分析中的主题模型则是一种非预分类的方法，可以考虑将这两种方法的结果进行对比。
