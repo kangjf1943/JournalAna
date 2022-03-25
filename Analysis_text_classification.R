@@ -6,7 +6,6 @@ si_info <- read.csv("RawData/doi_si_section.csv") %>%
   rename_with(tolower)
 
 # Function ----
-
 # 函数：将数据集分成训练集和测试集
 # 概述：从各个section中，抽取20%作为测试集
 # 输入：带有abstract和section列的数据框
@@ -91,7 +90,7 @@ fun_pltclass <- function(x_text_df, x_svm_res) {
 # 合并各卷论文数据并将各条目分成训练集和测试集
 # 董构建的特刊数据集结果包含2456本特刊，而目前分析的各卷文章共包含于1107本特刊中
 # 待办：text_ls是由Analysis.R构建的数据
-text_df <- Reduce(rbind, text_ls) %>% 
+sb_text_df <- Reduce(rbind, sb_text_ls) %>% 
   select(-fulltext, - ref) %>% 
   # 接入secssion和si数据
   left_join(si_info, by = "doi") %>% 
@@ -108,21 +107,21 @@ text_df <- Reduce(rbind, text_ls) %>%
   fun_testsample()
 
 # 评价模型质量 ----
-svm_res <- fun_textclass(text_df, "train", "test")
+sb_svm_res <- fun_textclass(sb_text_df, "train", "test")
 
 # 看分类结果和实际结果是否一致：是否一致跟模型质量有关，也跟原本分类是否合理有关
-svm_res$correct <- svm_res$SVM_LABEL == svm_res$section
-table(svm_res$correct)
+sb_svm_res$correct <- sb_svm_res$SVM_LABEL == sb_svm_res$section
+table(sb_svm_res$correct)
 # 查看分类正确组合错误组之间模型确定率的关系
-ggplot(svm_res) + 
+ggplot(sb_svm_res) + 
   geom_boxplot(aes(correct, SVM_PROB)) 
 
-fun_pltclass(text_df, svm_res)
+fun_pltclass(sb_text_df, sb_svm_res)
 
 # 对未归类特刊进行分类
-svm_res_unknown <- fun_textclass(text_df, "train", "unknown")
+sb_svm_res_unknown <- fun_textclass(text_df, "train", "unknown")
 # 看看自动分类的数量分布
-ggplot(svm_res_unknown) + 
+ggplot(sb_svm_res_unknown) + 
   geom_col(aes(SVM_LABEL, 1)) + 
   theme(axis.text.x = element_text(angle = 90))
 
