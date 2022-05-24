@@ -235,9 +235,6 @@ fun_wordcount <- function(x, col_abstract, col_doc) {
 }
 
 # 生成各文章对应的tf-idf数据框
-# 测试：先测试部分数据
-xmlfiles <- xmlfiles[1:6]
-
 tfidf <- vector("list", length(xmlfiles))
 names(tfidf) <- xmlfiles
 
@@ -282,7 +279,8 @@ tidy_ls_df <- Reduce(rbind, tidy_ls)
 dtm_10_df <- cast_dtm(tidy_ls_df, doi, word, n)
 
 # 主题分析
-lda_10 <- LDA(dtm_10_df, k = length(xmlfiles), control = list(seed = 1234))
+# 待办：分成和section数量等同的28个主题，其中包括一个NA
+lda_10 <- LDA(dtm_10_df, k = 28, control = list(seed = 1234))
 lda_10
 
 # 转化成可阅读的主题数据框
@@ -328,6 +326,7 @@ topic_10_gammascore_vol <- topic_10_gamma %>%
 ggplot(topic_10_gammascore_vol) + 
   geom_col(aes(topic, score)) + 
   facet_wrap(.~ vol)
+# 待办：同一卷在各个主题上的得分相似？
 
 # Special issue-based analysis ----
 # 从结果来看各卷在各主题上的得分还比较均衡，那如果是按照特刊来做主题模型分类呢？
@@ -353,10 +352,50 @@ topic_10_gammascore_si <- topic_10_gamma %>%
 topic_10_gammascore_section <- topic_10_gamma %>% 
   group_by(topic, section) %>% 
   summarise(score = sum(gamma)) %>% 
+  ungroup() %>% 
+  group_by(section) %>% 
+  mutate(score_std = score / max(score)) %>% 
   ungroup()
+
+# 计算各section的标准差
+topic_10_gammascore_section_sd <- topic_10_gammascore_section %>% 
+  group_by(section) %>% 
+  summarise(sd = sd(score_std)) %>% 
+  ungroup() %>% 
+  arrange(-sd)
+
+# 将各section按照标准差从高到低排序
+lvl_section <- topic_10_gammascore_section_sd$section
+topic_10_gammascore_section <- topic_10_gammascore_section %>% 
+  mutate(section = factor(section, levels = lvl_section))
 
 # 可视化各卷各主题得分
 ggplot(topic_10_gammascore_section) + 
-  geom_col(aes(topic, score)) + 
+  geom_col(aes(topic, score_std)) + 
   facet_wrap(.~ section)
+# 通过颜色深浅可视化
+ggplot(topic_10_gammascore_section) + 
+  geom_tile(aes(topic, section, fill = score_std)) + 
+  scale_fill_continuous(low = "white", high = "red")
+
+# 是否有明显的聚集现象：同一个特刊中的文章是否基本被归在同一个主题下？
+ggplot(topic_10_gamma) + 
+  geom_boxplot(aes(as_factor(topic), gamma)) + 
+  facet_wrap(.~ section)
+
+# 看看各个doi或者是section内的文章是否表现出相似性
+# 属于同一个section的特刊是否表现出相似性？
+# 假说：
+# 各个特刊内或者各个section内的文章表现出相似性
+# 各个特刊内的文章的相似性应该高于各个section内的文章的相似性
+# 相同section的特刊之间表现出相似格局
+# 待办：参数检验的前提到底是什么？
+
+
+
+
+
+
+
+
 
