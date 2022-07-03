@@ -1,15 +1,12 @@
+# 包 ----
 library(RTextTools)
 
-# Data import ----
-# 读取董构建的doi-section-si数据
-si_info <- read.csv("RawData/doi_si_section.csv") %>% 
-  rename_with(tolower)
-
-# Function ----
+# 函数 ----
 # 函数：将数据集分成训练集和测试集
 # 概述：从各个section中，抽取20%作为测试集
-# 输入：带有abstract和section列的数据框
 # 输出：带有基于分组抽样选定训练集、测试集、待分类标签列的数据
+# 参数：
+# x：带有abstract和section列的数据框
 fun_testsample <- function(x) {
   # 分为两部分：section已知和未知
   # section信息未知的部分
@@ -37,8 +34,9 @@ fun_testsample <- function(x) {
 }
 
 # 函数：基于支持向量机对文档进行分类
-# 输入：文本及其分类数据框，带有各条数据性质的列
 # 输出：测试或者待分类条目的分类结果
+# 参数：
+# x：文本及其分类数据框，带有各条数据性质的列
 fun_textclass <- function(x, nq_ana_unit, names_train, names_test) {
   # 根据选入的训练数据和测试数据选取输入数据框的子集
   x <- subset(x, set %in% c(names_train, names_test))
@@ -69,8 +67,10 @@ fun_textclass <- function(x, nq_ana_unit, names_train, names_test) {
 }
 
 # 函数：生成分类结果诊断图
-# 输入：x_text_df，带各分析单元索虎section信息的数据框；x_svm_res，分类结果数据框
 # 输出：分类结果诊断图，包括各section样本数量、各section分类确定率、各section实际分类准确率
+# 参数：
+# x_text_df：带各分析单元索虎section信息的数据框
+# x_svm_res：分类结果数据框
 fun_pltclass <- function(x_text_df, x_svm_res) {
   # 各样本量之间的关系
   plt_size_sec <- ggplot(x_text_df[!is.na(x_text_df$section), ]) + 
@@ -86,7 +86,13 @@ fun_pltclass <- function(x_text_df, x_svm_res) {
   plt_size_sec / plt_prob_sec / plt_correct_sec
 }
 
-# 以单个特刊为基本单位进行分析 ----
+# 数据 ----
+# 读取董构建的doi-section-si数据
+si_info <- read.csv("RawData/doi_si_section.csv") %>% 
+  rename_with(tolower)
+
+# 分析 ----
+#. 以单个特刊为基本单位进行分析 ----
 # 假设对已有section信息的特刊的归类是合理的，以这些特刊为训练数据集，对没有section信息的特刊进行分类
 # 合并各卷论文数据并将各条目分成训练集和测试集
 # 董构建的特刊数据集结果包含2456本特刊，而目前分析的各卷文章共包含于1107本特刊中
@@ -127,7 +133,7 @@ ggplot(sb_svm_res_unknown) +
   geom_col(aes(SVM_LABEL, 1)) + 
   theme(axis.text.x = element_text(angle = 90))
 
-# 以单篇文章为基本单位进行分析 ----
+#. 以单篇文章为基本单位进行分析 ----
 # 合并各卷论文数据
 # 待办：text_ls是由Analysis.R构建的数据
 ab_text_df <- Reduce(rbind, text_ls) %>% 
@@ -161,4 +167,3 @@ ab_svm_res_unknown <- fun_textclass(ab_text_df, doi, "train", "unknown")
 ggplot(ab_svm_res_unknown) + 
   geom_col(aes(SVM_LABEL, 1)) + 
   theme(axis.text.x = element_text(angle = 90))
-
