@@ -92,7 +92,7 @@ si_info <- read.csv("RawData/doi_si_section.csv") %>%
   rename_with(tolower)
 
 # 分析 ----
-#. 以单个特刊为基本单位进行分析 ----
+#. 以单个特刊为单元进行分析 ----
 # 假设对已有section信息的特刊的归类是合理的，以这些特刊为训练数据集，对没有section信息的特刊进行分类
 # 合并各卷论文数据并将各条目分成训练集和测试集
 # 董构建的特刊数据集结果包含2456本特刊，而目前分析的各卷文章共包含于1107本特刊中
@@ -133,7 +133,7 @@ ggplot(sb_svm_res_unknown) +
   geom_col(aes(SVM_LABEL, 1)) + 
   theme(axis.text.x = element_text(angle = 90))
 
-#. 以单篇文章为基本单位进行分析 ----
+#. 以单篇文章为单元进行分析 ----
 # 合并各卷论文数据
 # 待办：text_ls是由Analysis.R构建的数据
 ab_text_df <- Reduce(rbind, text_ls) %>% 
@@ -154,7 +154,7 @@ ab_svm_res <- fun_textclass(ab_text_df, doi, "train", "test")
 # 看分类结果和实际结果是否一致：是否一致跟模型质量有关，也跟原本分类是否合理有关
 ab_svm_res$correct <- ab_svm_res$SVM_LABEL == ab_svm_res$section
 table(ab_svm_res$correct)
-# 查看分类正确组合错误组之间模型确定率的关系
+# 查看分类正确组和错误组之间模型确定率的关系
 ggplot(ab_svm_res) + 
   geom_boxplot(aes(correct, SVM_PROB)) 
 
