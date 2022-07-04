@@ -6,6 +6,7 @@ library(ggplot2)
 library(patchwork)
 library(forcats)
 library(topicmodels)
+library(vegan)
 
 # Setting ----
 set_oridir <- getwd()
@@ -327,6 +328,73 @@ ggplot(topic_10_gammascore_vol) +
   geom_col(aes(topic, score)) + 
   facet_wrap(.~ vol)
 # 待办：同一卷在各个主题上的得分相似？
+
+## Diversity index of each article ----
+# 基于文章为单元的词频矩阵
+sec.tfidf <- 
+  tfidf %>% 
+  # 加入各文章对应section的数据
+  left_join(si_info, by = "doi") %>% 
+  group_by(section, word) %>% 
+  summarise(n = sum(n)) %>% 
+  arrange(section, -n) %>% 
+  mutate(rank = 1:n()) %>% 
+  ungroup() %>% 
+  # 去除无section信息的条目
+  subset(section != "NA")
+
+# 作等级-丰度图：横轴延伸长度表示特有词语数量，斜度表示词语频率分布的均匀程度
+ggplot(sec.tfidf) + 
+  geom_line(aes(rank, n)) + 
+  facet_wrap(.~ section, nrow = 3)
+
+# Functions ----
+# 函数：基于词频数据计算各文本分组的多样性指数
+# 输出：
+# 参数：
+# x：带有词语、对应频率、分组信息的数据，各列命名有要求
+GetDiv <- function(x) {
+  # 分组名称
+  grp.names <- unique(x$section)
+  # 空列表用于储存结果
+  div.ls <- vector("list", length = length(grp.names))
+  names(div.ls) <- grp.names
+  
+  # 对各文本分组计算多样性指数
+  for (i in grp.names) {
+    # 选择目标组子集
+    x.sub <- subset(x, section == i) %>% 
+      # 构建“群落数据”，列名为词语，数据为词频
+      select(word, n) %>% 
+      pivot_wider(names_from = word, values_from = n, values_fill = 0)
+    # 计算多样性指数
+    div.ls[[i]] <- tibble(
+      abundance = sum(x.sub), 
+      richness = ncol(x.sub),
+      shannon = diversity(x.sub, index = "shannon"), 
+      simpson = diversity(x.sub, index = "simpson"),
+      evenness = shannon / log(richness)
+    )
+  }
+  div.df <- tibble(
+    section = names(div.ls), 
+    Reduce(rbind, div.ls)
+  )
+  return(div.df)
+}
+
+# 计算各篇文章词语多样性指数并可视化
+sec.tfidf.div <- GetDiv(sec.tfidf)
+sec.tfidf.div %>% 
+  # 转化成长数据
+  pivot_longer(
+    cols = c("abundance", "richness", "shannon", "simpson", "evenness"), 
+    names_to = "index", values_to = "value"
+  ) %>% 
+  ggplot() + 
+  geom_col(aes(section, value)) + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  facet_wrap(.~ index, scales = "free_y", ncol = 1)
 
 # Special issue-based analysis ----
 # 从结果来看各卷在各主题上的得分还比较均衡，那如果是按照特刊来做主题模型分类呢？
