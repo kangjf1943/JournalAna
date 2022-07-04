@@ -348,7 +348,6 @@ ggplot(sec.tfidf) +
   geom_line(aes(rank, n)) + 
   facet_wrap(.~ section, nrow = 3)
 
-# Functions ----
 # 函数：基于词频数据计算各文本分组的多样性指数
 # 输出：
 # 参数：
@@ -395,6 +394,77 @@ sec.tfidf.div %>%
   geom_col(aes(section, value)) + 
   theme(axis.text.x = element_text(angle = 90)) + 
   facet_wrap(.~ index, scales = "free_y", ncol = 1)
+
+sec.art.dtm <- sec.tfidf %>% 
+  rename(section_id = section) %>% 
+  pivot_wider(
+    id_cols = section_id, names_from = word, values_from = n, values_fill = 0
+  )
+
+# 函数：计算文本之间的cosine相似度
+# 备注：改编自网上的代码（https://stackoverflow.com/questions/52720178/cosine-similarity-of-documents）
+# 参数：
+# df：文档-词频矩阵
+GetCosine <- function(df) {
+  df <- data.frame(df)
+  # 将文档-词频矩阵的分组列转化为其行名
+  rownames(df) <- df$section_id
+  df$section_id <- NULL
+  # Vector lengths
+  vl <- sqrt(rowSums(df*df))
+  
+  # Matrix of all combinations
+  comb <- t(combn(1:nrow(df), 2))
+  
+  # Compute cosine similarity for all combinations
+  csim <- 
+    apply(comb, 1, FUN = function(i) sum(apply(df[i, ], 2, prod))/prod(vl[i]))
+  
+  # Create a data.frame of the results
+  res <- data.frame(
+    doc_a = rownames(df)[comb[,1]],
+    doc_b = rownames(df)[comb[,2]],
+    csim = csim
+  ) %>% 
+    tibble()  # 转化为tibble格式
+  
+  return(res)
+}
+
+# 计算大概需要花两分钟
+sec.art.cosine <- GetCosine(sec.art.dtm)
+# 补全矩阵另一半
+sec.art.cosine <- rbind(
+  sec.art.cosine, 
+  tibble(doc_a = sec.art.cosine$doc_b, 
+         doc_b = sec.art.cosine$doc_a, 
+         csim = sec.art.cosine$csim)
+) 
+# 补全各主题和自己的相似性的部分
+sec.art.cosine <- rbind(
+  sec.art.cosine, 
+  tibble(doc_a = unique(sec.art.cosine$doc_a), 
+         doc_b = unique(sec.art.cosine$doc_a), 
+         csim = 1)
+)
+
+# 可视化
+ggplot(sec.art.cosine) + geom_tile(aes(x = doc_a, y = doc_b, fill = csim)) + 
+  scale_fill_gradientn(colors = terrain.colors(10)) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+# 计算各section和其他section之间的相似性平均值和中值
+sec.art.cosine %>% 
+  group_by(doc_a) %>% 
+  summarise(mean = mean(csim), median = median(csim)) %>% 
+  ungroup() %>% 
+  # 可视化平均值和中值
+  pivot_longer(cols = c("mean", "median"), names_to = "index") %>% 
+  rename(section_id = doc_a) %>% 
+  ggplot() + 
+  geom_col(aes(section_id, value)) + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  facet_wrap(.~ index, ncol = 1)
 
 # Special issue-based analysis ----
 # 从结果来看各卷在各主题上的得分还比较均衡，那如果是按照特刊来做主题模型分类呢？
