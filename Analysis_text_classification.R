@@ -89,7 +89,8 @@ fun_pltclass <- function(x_text_df, x_svm_res) {
 # 数据 ----
 # 读取董构建的doi-section-si数据
 si_info <- read.csv("RawData/doi_si_section.csv") %>% 
-  rename_with(tolower)
+  rename_with(tolower) %>% 
+  as_tibble()
 
 # 分析 ----
 #. 以单个特刊为单元进行分析 ----
