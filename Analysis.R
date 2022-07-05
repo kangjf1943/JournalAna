@@ -453,18 +453,18 @@ ggplot(sec.art.cosine) + geom_tile(aes(x = doc_a, y = doc_b, fill = csim)) +
   scale_fill_gradientn(colors = terrain.colors(10)) + 
   theme(axis.text.x = element_text(angle = 90))
 
-# 计算各section和其他section之间的相似性平均值和中值
+# 计算各section和其他section之间的相似性平均值、中值和标准差
 sec.art.cosine %>% 
   group_by(doc_a) %>% 
-  summarise(mean = mean(csim), median = median(csim)) %>% 
+  summarise(mean = mean(csim), median = median(csim), sd = sd(csim)) %>% 
   ungroup() %>% 
-  # 可视化平均值和中值
-  pivot_longer(cols = c("mean", "median"), names_to = "index") %>% 
+  # 可视化各统计指标
+  pivot_longer(cols = c("mean", "median", "sd"), names_to = "index") %>% 
   rename(section_id = doc_a) %>% 
   ggplot() + 
   geom_col(aes(section_id, value)) + 
   theme(axis.text.x = element_text(angle = 90)) + 
-  facet_wrap(.~ index, ncol = 1)
+  facet_wrap(.~ index, scale = "free_y", ncol = 1)
 
 # Special issue-based analysis ----
 # 从结果来看各卷在各主题上的得分还比较均衡，那如果是按照特刊来做主题模型分类呢？
