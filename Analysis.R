@@ -1,3 +1,7 @@
+# 概述 ----
+# 分别以单卷、单篇文章、单个特刊为基本单元进行分析，主要分析内容包括：词频分析，主题模型，多样性指数等
+
+# 包 ----
 library(xml2)
 library(tidyr)
 library(dplyr)
@@ -8,15 +12,17 @@ library(forcats)
 library(topicmodels)
 library(vegan)
 
-# Setting ----
+# 设置 ----
+# 原始路径
 set_oridir <- getwd()
+
 # 载入停止词并且添加自定义停止词
 data("stop_words")
 stop_words <- stop_words %>% 
   rbind(tibble(word = c("research", "result", "results", "study"), 
                lexicon = "user"))
 
-# Data import ----
+# 自定义函数 ----
 # 函数：获取某个xml文件中的目标属性数据
 # 输入：文件名
 # 输出：列表
@@ -96,28 +102,6 @@ fun_getxmls <- function(xpath) {
   return(output)
 }
 
-# 读取文件夹中所有xml文件并做分析
-xmlfiles <- dir("RawData/XmlData")
-
-# 构建列表存放10年各卷数据
-text_ls <- vector("list", length(xmlfiles))
-names(text_ls) <- xmlfiles
-
-# 遍历读取xml文件夹中的所有文件
-for (i in xmlfiles) {
-  text_ls[[i]] <- fun_getxmls(paste0("RawData/XmlData/", i))
-}
-
-# General description ----
-# 各卷论文数量
-# 待办：未涵盖因无法解析被排除的xml文件，其实也就10-4和10-6文件夹中各1个文件
-sapply(text_ls, nrow) %>% 
-  plot(type = "l")
-
-# Volume-based analysis ----
-## Term frequency ----
-# 基于摘要内容分析各卷tf-idf变化
-
 # 函数：词频统计
 # 输入：带有文本内容列的数据框
 # 输出：各卷词语计数规范数据
@@ -137,6 +121,112 @@ fun_wordcount <- function(x, col_abstract, col_doc) {
   return(tidy_abstract)
 }
 
+# 函数：词频统计
+# 输入：带有文本内容列的数据框
+# 输出：各篇文章词语计数规范数据
+fun_wordcount <- function(x, col_abstract, col_doc) {
+  # 摘要列分词
+  x[[col_abstract]] <- as.character(x[[col_abstract]])
+  tidy_abstract <- x %>% 
+    unnest_tokens(word, abstract) %>%
+    count(doi, word, sort = TRUE) %>% 
+    mutate(doc = col_doc) %>% 
+    select(doc, doi, word, n)
+  
+  # 删除停止词
+  tidy_abstract <- tidy_abstract %>% 
+    anti_join(stop_words)
+  
+  return(tidy_abstract)
+}
+
+# 函数：基于词频数据计算各文本分组的多样性指数
+# 输出：
+# 参数：
+# x：带有词语、对应频率、分组信息的数据，各列命名有要求
+GetDiv <- function(x) {
+  # 分组名称
+  grp.names <- unique(x$section)
+  # 空列表用于储存结果
+  div.ls <- vector("list", length = length(grp.names))
+  names(div.ls) <- grp.names
+  
+  # 对各文本分组计算多样性指数
+  for (i in grp.names) {
+    # 选择目标组子集
+    x.sub <- subset(x, section == i) %>% 
+      # 构建“群落数据”，列名为词语，数据为词频
+      select(word, n) %>% 
+      pivot_wider(names_from = word, values_from = n, values_fill = 0)
+    # 计算多样性指数
+    div.ls[[i]] <- tibble(
+      abundance = sum(x.sub), 
+      richness = ncol(x.sub),
+      shannon = diversity(x.sub, index = "shannon"), 
+      simpson = diversity(x.sub, index = "simpson"),
+      evenness = shannon / log(richness)
+    )
+  }
+  div.df <- tibble(
+    section = names(div.ls), 
+    Reduce(rbind, div.ls)
+  )
+  return(div.df)
+}
+
+# 函数：计算文本之间的cosine相似度
+# 备注：改编自网上的代码（https://stackoverflow.com/questions/52720178/cosine-similarity-of-documents）
+# 参数：
+# df：文档-词频矩阵
+GetCosine <- function(df) {
+  df <- data.frame(df)
+  # 将文档-词频矩阵的分组列转化为其行名
+  rownames(df) <- df$section_id
+  df$section_id <- NULL
+  # Vector lengths
+  vl <- sqrt(rowSums(df*df))
+  
+  # Matrix of all combinations
+  comb <- t(combn(1:nrow(df), 2))
+  
+  # Compute cosine similarity for all combinations
+  csim <- 
+    apply(comb, 1, FUN = function(i) sum(apply(df[i, ], 2, prod))/prod(vl[i]))
+  
+  # Create a data.frame of the results
+  res <- data.frame(
+    doc_a = rownames(df)[comb[,1]],
+    doc_b = rownames(df)[comb[,2]],
+    csim = csim
+  ) %>% 
+    tibble()  # 转化为tibble格式
+  
+  return(res)
+}
+
+# 数据读取 ----
+# 读取文件夹中所有xml文件并做分析
+xmlfiles <- dir("RawData/XmlData")
+
+# 构建列表存放10年各卷数据
+text_ls <- vector("list", length(xmlfiles))
+names(text_ls) <- xmlfiles
+
+# 遍历读取xml文件夹中的所有文件
+for (i in xmlfiles) {
+  text_ls[[i]] <- fun_getxmls(paste0("RawData/XmlData/", i))
+}
+
+# 分析 ----
+#. 描述性分析 ----
+# 各卷论文数量
+# 待办：未涵盖因无法解析被排除的xml文件，其实也就10-4和10-6文件夹中各1个文件
+sapply(text_ls, nrow) %>% 
+  plot(type = "l")
+
+#. 以卷为单元分析 ----
+#.. 词频 ----
+# 基于摘要内容分析各卷tf-idf变化
 # 生成各卷对应的tf-idf数据框
 tfidf <- vector("list", length(xmlfiles))
 names(tfidf) <- xmlfiles
@@ -179,7 +269,7 @@ tfidf %>%
 # 弄一个新的指标出来？或者是tf、idf和tf-idf几个都可视化一下？
 # 或者说，最小分析单元不应该是卷而应该是文章？
 
-## Topic model ----
+#.. 主题模型 ----
 # 将各卷词频统计混合起来
 tidy_ls_df <- Reduce(rbind, tidy_ls)
 
@@ -212,29 +302,9 @@ topic_10_gamma %>%
   geom_col(aes(topic, gamma)) + 
   facet_wrap(~document)
 
-# Article-based analysis ----
-## Term frequency ----
+#. 以文章为单元分析 ----
+#.. 词频 ----
 # 基于摘要内容分析各卷tf-idf变化
-
-# 函数：词频统计
-# 输入：带有文本内容列的数据框
-# 输出：各篇文章词语计数规范数据
-fun_wordcount <- function(x, col_abstract, col_doc) {
-  # 摘要列分词
-  x[[col_abstract]] <- as.character(x[[col_abstract]])
-  tidy_abstract <- x %>% 
-    unnest_tokens(word, abstract) %>%
-    count(doi, word, sort = TRUE) %>% 
-    mutate(doc = col_doc) %>% 
-    select(doc, doi, word, n)
-  
-  # 删除停止词
-  tidy_abstract <- tidy_abstract %>% 
-    anti_join(stop_words)
-  
-  return(tidy_abstract)
-}
-
 # 生成各文章对应的tf-idf数据框
 tfidf <- vector("list", length(xmlfiles))
 names(tfidf) <- xmlfiles
@@ -272,7 +342,7 @@ tfidf <- Reduce(rbind, tidy_ls) %>%
 #   labs(x = "tf-idf", y = NULL)
 # 待办：如果输出每篇文章前10位的词语，结果就太长了
 
-## Topic model ----
+#.. 主题模型 ----
 # 将各卷词频统计混合起来
 tidy_ls_df <- Reduce(rbind, tidy_ls)
 
@@ -329,7 +399,7 @@ ggplot(topic_10_gammascore_vol) +
   facet_wrap(.~ vol)
 # 待办：同一卷在各个主题上的得分相似？
 
-## Diversity index of each article ----
+#.. 各文多样性指数 ----
 # 基于文章为单元的词频矩阵
 sec.tfidf <- 
   tfidf %>% 
@@ -347,40 +417,6 @@ sec.tfidf <-
 ggplot(sec.tfidf) + 
   geom_line(aes(rank, n)) + 
   facet_wrap(.~ section, nrow = 3)
-
-# 函数：基于词频数据计算各文本分组的多样性指数
-# 输出：
-# 参数：
-# x：带有词语、对应频率、分组信息的数据，各列命名有要求
-GetDiv <- function(x) {
-  # 分组名称
-  grp.names <- unique(x$section)
-  # 空列表用于储存结果
-  div.ls <- vector("list", length = length(grp.names))
-  names(div.ls) <- grp.names
-  
-  # 对各文本分组计算多样性指数
-  for (i in grp.names) {
-    # 选择目标组子集
-    x.sub <- subset(x, section == i) %>% 
-      # 构建“群落数据”，列名为词语，数据为词频
-      select(word, n) %>% 
-      pivot_wider(names_from = word, values_from = n, values_fill = 0)
-    # 计算多样性指数
-    div.ls[[i]] <- tibble(
-      abundance = sum(x.sub), 
-      richness = ncol(x.sub),
-      shannon = diversity(x.sub, index = "shannon"), 
-      simpson = diversity(x.sub, index = "simpson"),
-      evenness = shannon / log(richness)
-    )
-  }
-  div.df <- tibble(
-    section = names(div.ls), 
-    Reduce(rbind, div.ls)
-  )
-  return(div.df)
-}
 
 # 计算各篇文章词语多样性指数并可视化
 sec.tfidf.div <- GetDiv(sec.tfidf)
@@ -400,36 +436,6 @@ sec.art.dtm <- sec.tfidf %>%
   pivot_wider(
     id_cols = section_id, names_from = word, values_from = n, values_fill = 0
   )
-
-# 函数：计算文本之间的cosine相似度
-# 备注：改编自网上的代码（https://stackoverflow.com/questions/52720178/cosine-similarity-of-documents）
-# 参数：
-# df：文档-词频矩阵
-GetCosine <- function(df) {
-  df <- data.frame(df)
-  # 将文档-词频矩阵的分组列转化为其行名
-  rownames(df) <- df$section_id
-  df$section_id <- NULL
-  # Vector lengths
-  vl <- sqrt(rowSums(df*df))
-  
-  # Matrix of all combinations
-  comb <- t(combn(1:nrow(df), 2))
-  
-  # Compute cosine similarity for all combinations
-  csim <- 
-    apply(comb, 1, FUN = function(i) sum(apply(df[i, ], 2, prod))/prod(vl[i]))
-  
-  # Create a data.frame of the results
-  res <- data.frame(
-    doc_a = rownames(df)[comb[,1]],
-    doc_b = rownames(df)[comb[,2]],
-    csim = csim
-  ) %>% 
-    tibble()  # 转化为tibble格式
-  
-  return(res)
-}
 
 # 计算大概需要花两分钟
 sec.art.cosine <- GetCosine(sec.art.dtm)
@@ -466,7 +472,7 @@ sec.art.cosine %>%
   theme(axis.text.x = element_text(angle = 90)) + 
   facet_wrap(.~ index, scale = "free_y", ncol = 1)
 
-# Special issue-based analysis ----
+#. 基于特刊的分析 ----
 # 从结果来看各卷在各主题上的得分还比较均衡，那如果是按照特刊来做主题模型分类呢？
 si_info <- read.csv("RawData/doi_si_section.csv") %>% 
   rename_with(tolower) %>% 
