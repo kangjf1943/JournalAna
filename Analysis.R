@@ -208,7 +208,7 @@ GetCosine <- function(df) {
 # 读取文件夹中所有xml文件并做分析
 xmlfiles <- dir("RawData/XmlData")
 
-# 构建列表存放10年各卷数据
+# 构建列表存放各卷数据
 text_ls <- vector("list", length(xmlfiles))
 names(text_ls) <- xmlfiles
 
@@ -220,7 +220,7 @@ for (i in xmlfiles) {
 # 分析 ----
 #. 描述性分析 ----
 # 各卷论文数量
-# 待办：未涵盖因无法解析被排除的xml文件，其实也就10-4和10-6文件夹中各1个文件
+# 漏洞：未涵盖因无法解析被排除的xml文件，其实也就10-4和10-6文件夹中各1个文件
 sapply(text_ls, nrow) %>% 
   plot(type = "l")
 
@@ -242,45 +242,16 @@ tfidf <- Reduce(rbind, tidy_ls) %>%
   bind_tf_idf(word, doi, n) %>% 
   arrange(desc(tf_idf))
 
-# 输出绝对词频前10位的词及对应的图
-# tfidf %>%
-#   group_by(doc) %>%
-#   slice_max(n, n = 10) %>%
-#   ungroup() %>%
-#   ggplot() +
-#   geom_col(aes(n, fct_reorder(word, n))) +
-#   facet_wrap(~ doc, ncol = 2, scales = "free") +
-#   labs(x = "tf-idf", y = NULL)
-# 待办：如果输出每篇文章前10位的词语，结果就太长了
-
-# 输出tf-idf前10位的词及对应的图
-# tfidf %>%
-#   group_by(doc) %>%
-#   slice_max(tf_idf, n = 10) %>%
-#   ungroup() %>%
-#   ggplot() +
-#   geom_col(aes(tf_idf, fct_reorder(word, tf_idf))) +
-#   facet_wrap(~ doc, ncol = 2, scales = "free") +
-#   labs(x = "tf-idf", y = NULL)
-# 待办：如果输出每篇文章前10位的词语，结果就太长了
-
 #.. 主题模型 ----
-# 将各卷词频统计混合起来
-tidy_ls_df <- Reduce(rbind, tidy_ls)
-
 # 生成term-document matrix
-dtm_10_df <- cast_dtm(tidy_ls_df, doi, word, n)
+dtm.art <- cast_dtm(tfidf, doi, word, n)
 
 # 主题分析
-# 待办：分成和section数量等同的28个主题，其中包括一个NA
-lda_10 <- LDA(dtm_10_df, k = 28, control = list(seed = 1234))
-lda_10
+# 漏洞：暂时分成6个主题，其中包括一个NA
+lda.art <- LDA(dtm.art, k = 6, control = list(seed = 1234))
 
-# 转化成可阅读的主题数据框
-topic_10_beta <- tidy(lda_10, matrix = "beta")
-
-# 取前十位可视化
-topic_10_beta %>% 
+# 转化成可阅读的主题数据框并取前十位可视化
+tidy(lda.art, matrix = "beta") %>% 
   group_by(topic) %>% 
   slice_max(beta, n = 10) %>% 
   ungroup() %>% 
@@ -288,17 +259,11 @@ topic_10_beta %>%
   ggplot(aes(beta, term)) + 
   geom_col() + 
   facet_wrap(~ topic, scales = "free")
-# 待办：结果区分度不明显
+# 漏洞：主题之间区分度不明显，且意味不明
 
 # 各篇文章属于各个主题的概率
-topic_10_gamma <- tidy(lda_10, matrix = "gamma") %>% 
+topic.art <- tidy(lda.art, matrix = "gamma") %>% 
   rename(doi = document)
-
-# topic_10_gamma %>% 
-#   ggplot() + 
-#   geom_col(aes(topic, gamma)) + 
-#   facet_wrap(~ doi)
-# 待办：文章数量太多，无法把每个图都画出来
 
 # 计算各卷在各个主题上的得分
 # 加入各文章所属卷信息
@@ -308,18 +273,6 @@ for (i in 1:length(text_ls)) {
 text_df <- Reduce(rbind, text_ls)
 topic_10_gamma <- topic_10_gamma %>% 
   left_join(select(text_df, doi, vol), by = "doi")
-
-# 计算各卷各主题得分
-topic_10_gammascore_vol <- topic_10_gamma %>% 
-  group_by(topic, vol) %>% 
-  summarise(score = sum(gamma)) %>% 
-  ungroup()
-
-# 可视化各卷各主题得分
-ggplot(topic_10_gammascore_vol) + 
-  geom_col(aes(topic, score)) + 
-  facet_wrap(.~ vol)
-# 待办：同一卷在各个主题上的得分相似？
 
 #.. 各文多样性指数 ----
 # 基于文章为单元的词频矩阵
