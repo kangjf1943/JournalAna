@@ -105,7 +105,7 @@ fun_getxmls <- function(xpath) {
 # 函数：词频统计
 # 输入：带有文本内容列的数据框
 # 输出：各卷词语计数规范数据
-fun_wordcount <- function(x, col_abstract, col_doc) {
+CountWord <- function(x, col_abstract, col_doc) {
   # 摘要列分词
   x[[col_abstract]] <- as.character(x[[col_abstract]])
   tidy_abstract <- x %>% 
@@ -124,7 +124,7 @@ fun_wordcount <- function(x, col_abstract, col_doc) {
 # 函数：词频统计
 # 输入：带有文本内容列的数据框
 # 输出：各篇文章词语计数规范数据
-fun_wordcount <- function(x, col_abstract, col_doc) {
+CountWord <- function(x, col_abstract, col_doc) {
   # 摘要列分词
   x[[col_abstract]] <- as.character(x[[col_abstract]])
   tidy_abstract <- x %>% 
@@ -177,12 +177,9 @@ GetDiv <- function(x) {
 # 函数：计算文本之间的cosine相似度
 # 备注：改编自网上的代码（https://stackoverflow.com/questions/52720178/cosine-similarity-of-documents）
 # 参数：
-# df：文档-词频矩阵
-GetCosine <- function(df) {
-  df <- data.frame(df)
-  # 将文档-词频矩阵的分组列转化为其行名
-  rownames(df) <- df$section_id
-  df$section_id <- NULL
+# df：不带section或者doi信息的纯文档-词频矩阵
+# names.doc：用于对比的文档名称
+GetCosine <- function(df, names.doc) {
   # Vector lengths
   vl <- sqrt(rowSums(df*df))
   
@@ -195,8 +192,8 @@ GetCosine <- function(df) {
   
   # Create a data.frame of the results
   res <- data.frame(
-    doc_a = rownames(df)[comb[,1]],
-    doc_b = rownames(df)[comb[,2]],
+    doc_a = names.doc[comb[,1]],
+    doc_b = names.doc[comb[,2]],
     csim = csim
   ) %>% 
     tibble()  # 转化为tibble格式
@@ -205,7 +202,14 @@ GetCosine <- function(df) {
 }
 
 # 数据读取 ----
-# 读取文件夹中所有xml文件并做分析
+#. 各文所属section ----
+# article、section和SI的对应关系
+match.info <- read.csv("RawData/doi_si_section.csv") %>% 
+  rename_with(tolower) %>% 
+  as_tibble()
+
+#. 原文信息 ----
+# 读取文件夹中所有xml文件
 xmlfiles <- dir("RawData/XmlData")
 
 # 构建列表存放各卷数据
@@ -217,6 +221,52 @@ for (i in xmlfiles) {
   text_ls[[i]] <- fun_getxmls(paste0("RawData/XmlData/", i))
 }
 
+# 将各卷数据合并到一个数据框中并且加入section信息：此处，“section”就相当于一个生物群落，“doi”相当于一个样方，“abstract”将被分解成一个个“有机体”
+art.textdata <- Reduce(rbind, text_ls) %>% 
+  left_join(match.info, by = "doi") %>% 
+  # 删除无section信息的条目
+  # 漏洞：本分析主要目的之一是对无section的条目进行分类，所以后面可能还要把它们找回来
+  subset(!is.na(section)) %>% 
+  # 删除无abstract的文章
+  subset(!is.na(abstract)) %>% 
+  # 选择需要的列
+  select(section, doi, abstract)
+
+# 计算各个section对应的文章数量并且删除文章数少于50的section对应条目
+tar.section <- art.textdata %>% 
+  group_by(section) %>% 
+  summarise(art_n = n()) %>% 
+  ungroup() %>% 
+  subset(art_n > 50) %>% 
+  .$section
+art.textdata <- art.textdata %>% 
+  subset(section %in% tar.section)
+
+# 生成包含词频的TF-ITF矩阵
+art.tfidf <- 
+  CountWord(art.textdata, col_abstract = "abstract", col_doc = "doi") %>% 
+  # 生成tf、idf、tf-idf值列
+  bind_tf_idf(word, doi, n) %>% 
+  arrange(desc(tf_idf)) %>% 
+  # 漏洞：为何会有一列名为“doc”且值全为“doi”的列？
+  # 加入section信息
+  left_join(match.info, by = "doi") %>% 
+  select(section, doi, word, n, tf, idf, tf_idf) %>% 
+  # 为了避免后面转换成宽数据时和文章词语重复，更改列名
+  rename(art_section = section, art_doi = doi)
+
+# 构建群落数据
+art.comm <- art.tfidf %>% 
+  select(art_section, art_doi, word, n) %>% 
+  pivot_wider(id_cols = c(art_section, art_doi), names_from = word, 
+              values_from = n, values_fill = 0)
+
+# 计算多样性指数
+art.div <- art.comm %>% 
+  mutate(richness = apply(.[3:ncol(.)] > 0, 1, sum), 
+         shannon = diversity(.[3:ncol(.)], index = "shannon")) %>% 
+  select(art_section, art_doi, richness, shannon)
+
 # 分析 ----
 #. 描述性分析 ----
 # 各卷论文数量
@@ -224,7 +274,15 @@ for (i in xmlfiles) {
 sapply(text_ls, nrow) %>% 
   plot(type = "l")
 
-#. 以文章为单元分析 ----
+#. 多样性分析 ----
+# 对比各section的多样性指数
+ggplot(art.div) + 
+  geom_boxplot(aes(art_section, richness)) + 
+  theme(axis.text.x = element_text(angle = 90))
+ggplot(art.div) + 
+  geom_boxplot(aes(art_section, shannon)) + 
+  theme(axis.text.x = element_text(angle = 90))
+
 #.. 词频 ----
 # 基于摘要内容分析各卷tf-idf变化
 # 生成各文章对应的tf-idf数据框
@@ -235,7 +293,7 @@ tidy_ls <- vector("list", length(xmlfiles))
 names(tidy_ls) <- xmlfiles
 
 for (i in xmlfiles) {
-  tidy_ls[[i]] <- fun_wordcount(text_ls[[i]], "abstract", i)
+  tidy_ls[[i]] <- CountWord(text_ls[[i]], "abstract", i)
 }
 
 tfidf <- Reduce(rbind, tidy_ls) %>% 
