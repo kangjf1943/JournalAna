@@ -104,38 +104,26 @@ fun_getxmls <- function(xpath) {
 
 # 函数：词频统计
 # 输入：带有文本内容列的数据框
-# 输出：各卷词语计数规范数据
-CountWord <- function(x, col_abstract, col_doc) {
-  # 摘要列分词
-  x[[col_abstract]] <- as.character(x[[col_abstract]])
-  tidy_abstract <- x %>% 
-    unnest_tokens(word, abstract) %>%
-    count(word, sort = TRUE) %>% 
-    mutate(doc = col_doc) %>% 
-    select(doc, word, n)
-  
-  # 删除停止词
-  tidy_abstract <- tidy_abstract %>% 
-    anti_join(stop_words)
-  
-  return(tidy_abstract)
-}
-
-# 函数：词频统计
-# 输入：带有文本内容列的数据框
 # 输出：各篇文章词语计数规范数据
 CountWord <- function(x, col_abstract, col_doc) {
   # 摘要列分词
   x[[col_abstract]] <- as.character(x[[col_abstract]])
   tidy_abstract <- x %>% 
     unnest_tokens(word, abstract) %>%
-    count(doi, word, sort = TRUE) %>% 
-    mutate(doc = col_doc) %>% 
-    select(doc, doi, word, n)
+    count(doi, word, sort = TRUE) 
   
   # 删除停止词
   tidy_abstract <- tidy_abstract %>% 
-    anti_join(stop_words)
+    anti_join(stop_words, by = "word")
+  
+  # 删除包含数字而不含字母的词语
+  # 漏洞：原则上应该要删除的是纯数字或者数字与逗号和句号的组合，目前对正则表达式不甚了解，先如此处理。等到了解之后，还应该尝试删除意味不明的纯字母组合。
+  tidy_abstract$keep <- !grepl(pattern = '[0-9]', x = tidy_abstract$word) & 
+    grepl(pattern = '[a-z]', x = tidy_abstract$word)
+  
+  tidy_abstract <- tidy_abstract %>% 
+    subset(keep == TRUE) %>% 
+    select(doi, word, n)
   
   return(tidy_abstract)
 }
@@ -248,7 +236,6 @@ art.tfidf <-
   # 生成tf、idf、tf-idf值列
   bind_tf_idf(word, doi, n) %>% 
   arrange(desc(tf_idf)) %>% 
-  # 漏洞：为何会有一列名为“doc”且值全为“doi”的列？
   # 加入section信息
   left_join(match.info, by = "doi") %>% 
   select(section, doi, word, n, tf, idf, tf_idf) %>% 
