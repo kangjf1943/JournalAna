@@ -26,7 +26,7 @@ stop_words <- stop_words %>%
 # 函数：获取某个xml文件中的目标属性数据
 # 输入：文件名
 # 输出：列表
-fun_getxml <- function(x) {
+GetXml <- function(x) {
   # 获取一篇文章中的全部原始数据
   # 待办：为了排除无法解析的xml，此处用try()函数
   rawdata <- try(read_xml(x))
@@ -72,7 +72,7 @@ fun_getxml <- function(x) {
 # 函数：批量获取xml文件的目标属性数据
 # 输入：目标文件夹
 # 输出：包含tibble的列表
-fun_getxmls <- function(xpath) {
+GetXmls <- function(xpath) {
   # 构建列表用于暂存各个xml文件
   xml_ls <- vector("list", 4)
   names(xml_ls) <- c("doi", "abstract", "fulltext", "ref")
@@ -82,7 +82,7 @@ fun_getxmls <- function(xpath) {
   xml_names <- xml_names[!grepl("meta", xml_names)]
   setwd(xpath)
   for (x in xml_names) {
-    single_xml <- fun_getxml(x)
+    single_xml <- GetXml(x)
     for (j in names(xml_ls)) {
       xml_ls[[j]] <- c(xml_ls[[j]], single_xml[[j]])
     }
@@ -206,7 +206,7 @@ names(text_ls) <- xmlfiles
 
 # 遍历读取xml文件夹中的所有文件
 for (i in xmlfiles) {
-  text_ls[[i]] <- fun_getxmls(paste0("RawData/XmlData/", i))
+  text_ls[[i]] <- GetXmls(paste0("RawData/XmlData/", i))
 }
 
 # 将各卷数据合并到一个数据框中并且加入section信息：此处，“section”就相当于一个生物群落，“doi”相当于一个样方，“abstract”将被分解成一个个“有机体”
