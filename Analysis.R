@@ -104,8 +104,11 @@ GetXmls <- function(xpath) {
 }
 
 # 函数：词频统计
-# 输入：带有文本内容列的数据框
-# 输出：各篇文章词语计数规范数据
+# 参数：
+# x：带有分析文本编号和内容的数据框
+# col_abstract：文本内容列名
+# col_doc：文本编号列名
+# 输出：各篇文章词语计数规范数据，每一列为某个文本的某个词语的出现频数
 CountWord <- function(x, col_abstract, col_doc) {
   # 摘要列分词
   x[[col_abstract]] <- as.character(x[[col_abstract]])
@@ -124,6 +127,12 @@ CountWord <- function(x, col_abstract, col_doc) {
   
   tidy_abstract <- tidy_abstract %>% 
     subset(keep == TRUE) %>% 
+    # 将词语的各种变形都转化成词干形式并且合并相同的词
+    # 漏洞：有些词干难以理解
+    mutate(word = tm::stemDocument(word)) %>% 
+    group_by(doi, word) %>% 
+    summarise(n = sum(n)) %>% 
+    ungroup() %>% 
     select(doi, word, n)
   
   return(tidy_abstract)
