@@ -15,6 +15,7 @@ library(vegan)
 # 设置 ----
 # 原始路径
 set_oridir <- getwd()
+set.sample <- TRUE
 
 # 载入停止词并且添加自定义停止词
 data("stop_words")
@@ -199,6 +200,16 @@ match.info <- read.csv("RawData/doi_si_section.csv") %>%
 #. 原文信息 ----
 # 读取文件夹中所有xml文件
 xmlfiles <- dir("RawData/XmlData")
+# 是否抽样：因为数据量大，对全体数据进行分析耗时太长。如果抽样的话，则选取部分数据进行试分析，在这个快速分析之后，再对全体数据进行分析，可以提高效率。
+if(set.sample == TRUE) {
+  set.seed(1234)
+  xmlfiles <- sample(
+    xmlfiles, 
+    # 选择其中1/5的数据进行样本分析
+    size = 0.2 * length(xmlfiles), 
+    prob = rep_len(c(0.8, 0.4, 0.2, 0.1, 0.05), length.out = length(xmlfiles))
+  )
+}
 
 # 构建列表存放各卷数据
 text_ls <- vector("list", length(xmlfiles))
