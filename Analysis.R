@@ -437,3 +437,29 @@ ml.cor.rate %>%
   left_join(artsec.cosine, by = "section") %>% 
   ggplot() + geom_point(aes(csim, cor_rate))
 
+# 一个section如果文章构成越复杂，就越难以分类？
+# LDA主题也可以看成是构成section的“元主题”，一次来计算每个section的多样性
+ml.cor.rate %>% 
+  left_join(
+    # 计算每个section的多样性
+    art.topic.sankey.gamma %>% 
+      pivot_wider(id_cols = "section", names_from = topic, 
+                  values_from = gamma, values_fill = 0) %>% 
+      mutate(shannon = diversity(.[2:7], index = "shannon")), 
+    by = "section"
+  ) %>% 
+  ggplot() + geom_point(aes(shannon, cor_rate))
+# 漏洞：基于art.topic.sankey.gamma的gammar_prop和gamma计算的多样性结果是一样的？
+# 如果基于数量而非gamma计算多样性呢？
+ml.cor.rate %>% 
+  left_join(
+    # 计算每个section的多样性
+    art.topic.sankey.num %>% 
+      pivot_wider(id_cols = "section", names_from = topic, 
+                  values_from = n, values_fill = 0) %>% 
+      mutate(shannon = diversity(.[2:7], index = "shannon")), 
+    by = "section"
+  ) %>% 
+  ggplot() + geom_point(aes(shannon, cor_rate))
+# 和基于gamma计算出来的结果差不多
+
