@@ -498,3 +498,45 @@ ml.cor.rate %>%
   left_join(art.meancsim, by = "section") %>% 
   ggplot() + geom_point(aes(csim_mean, cor_rate))
 
+# 机器学习分类准确率和文章多样性之间的关系
+# richness平均值和及其分类准确率
+ml.cor.rate %>% 
+  left_join(
+    art.div %>% 
+      group_by(art_section) %>% 
+      summarise(richness_mean = mean(richness)) %>% 
+      ungroup(), 
+    by = c("section" = "art_section")
+  ) %>% 
+  ggplot() + geom_point(aes(richness_mean, cor_rate))
+# richness中位数和及其分类准确率
+ml.cor.rate %>% 
+  left_join(
+    art.div %>% 
+      group_by(art_section) %>% 
+      summarise(richness_mid = median(richness)) %>% 
+      ungroup(), 
+    by = c("section" = "art_section")
+  ) %>% 
+  ggplot() + geom_point(aes(richness_mid, cor_rate))
+# 香农指数平均值和及其分类准确率
+ml.cor.rate %>% 
+  left_join(
+    art.div %>% 
+      group_by(art_section) %>% 
+      summarise(shannon_mean = mean(shannon)) %>% 
+      ungroup(), 
+    by = c("section" = "art_section")
+  ) %>% 
+  ggplot() + geom_point(aes(shannon_mean, cor_rate))
+# 香农指数中位数和及其分类准确率
+ml.cor.rate %>% 
+  left_join(
+    art.div %>% 
+      group_by(art_section) %>% 
+      summarise(shannon_mid = median(shannon)) %>% 
+      ungroup(), 
+    by = c("section" = "art_section")
+  ) %>% 
+  ggplot() + geom_point(aes(shannon_mid, cor_rate))
+# 这四个结果相似
