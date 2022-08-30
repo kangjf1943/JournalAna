@@ -463,3 +463,14 @@ ml.cor.rate %>%
   ggplot() + geom_point(aes(shannon, cor_rate))
 # 和基于gamma计算出来的结果差不多
 
+# 机器学习分类结果正确率和每个section文章数量的关系
+ml.cor.rate %>% 
+  left_join(
+    art.textdata %>% 
+      group_by(section) %>% 
+      summarise(richness = n()) %>% 
+      ungroup(), 
+    by = "section"
+  ) %>% 
+  ggplot() + geom_point(aes(richness, cor_rate))
+
