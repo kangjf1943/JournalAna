@@ -299,7 +299,7 @@ ggplot(art.div) +
 art.dtm <- cast_dtm(art.tfidf, art_doi, word, n)
 
 # 主题分析
-# 漏洞：暂时分成6个主题，其中包括一个NA
+# 漏洞：暂时分成6个主题
 art.lda <- LDA(art.dtm, k = 6, control = list(seed = 1234))
 
 # 转化成可阅读的主题数据框并取前十位可视化
