@@ -290,33 +290,16 @@ ggplot(art.div) +
   geom_boxplot(aes(art_section, shannon)) + 
   theme(axis.text.x = element_text(angle = 90))
 
-#.. 词频 ----
-# 基于摘要内容分析各卷tf-idf变化
-# 生成各文章对应的tf-idf数据框
-tfidf <- vector("list", length(xmlfiles))
-names(tfidf) <- xmlfiles
-
-tidy_ls <- vector("list", length(xmlfiles))
-names(tidy_ls) <- xmlfiles
-
-for (i in xmlfiles) {
-  tidy_ls[[i]] <- CountWord(text_ls[[i]], "abstract", i)
-}
-
-tfidf <- Reduce(rbind, tidy_ls) %>% 
-  bind_tf_idf(word, doi, n) %>% 
-  arrange(desc(tf_idf))
-
-#.. 主题模型 ----
+#. 主题模型 ----
 # 生成term-document matrix
-dtm.art <- cast_dtm(tfidf, doi, word, n)
+art.dtm <- cast_dtm(art.tfidf, art_doi, word, n)
 
 # 主题分析
 # 漏洞：暂时分成6个主题，其中包括一个NA
-lda.art <- LDA(dtm.art, k = 6, control = list(seed = 1234))
+art.lda <- LDA(art.dtm, k = 6, control = list(seed = 1234))
 
 # 转化成可阅读的主题数据框并取前十位可视化
-tidy(lda.art, matrix = "beta") %>% 
+tidy(art.lda, matrix = "beta") %>% 
   group_by(topic) %>% 
   slice_max(beta, n = 10) %>% 
   ungroup() %>% 
@@ -327,88 +310,7 @@ tidy(lda.art, matrix = "beta") %>%
 # 漏洞：主题之间区分度不明显，且意味不明
 
 # 各篇文章属于各个主题的概率
-topic.art <- tidy(lda.art, matrix = "gamma") %>% 
-  rename(doi = document)
-
-# 计算各卷在各个主题上的得分
-# 加入各文章所属卷信息
-for (i in 1:length(text_ls)) {
-  text_ls[[i]]$vol <- names(text_ls[i])
-}
-text_df <- Reduce(rbind, text_ls)
-topic_10_gamma <- topic_10_gamma %>% 
-  left_join(select(text_df, doi, vol), by = "doi")
-
-#.. 各文多样性指数 ----
-# 基于文章为单元的词频矩阵
-sec.tfidf <- 
-  tfidf %>% 
-  # 加入各文章对应section的数据
-  left_join(si_info, by = "doi") %>% 
-  group_by(section, word) %>% 
-  summarise(n = sum(n)) %>% 
-  arrange(section, -n) %>% 
-  mutate(rank = 1:n()) %>% 
-  ungroup() %>% 
-  # 去除无section信息的条目
-  subset(section != "NA")
-
-# 作等级-丰度图：横轴延伸长度表示特有词语数量，斜度表示词语频率分布的均匀程度
-ggplot(sec.tfidf) + 
-  geom_line(aes(rank, n)) + 
-  facet_wrap(.~ section, nrow = 3)
-
-# 计算各篇文章词语多样性指数并可视化
-sec.tfidf.div <- GetDiv(sec.tfidf)
-sec.tfidf.div %>% 
-  # 转化成长数据
-  pivot_longer(
-    cols = c("abundance", "richness", "shannon", "simpson", "evenness"), 
-    names_to = "index", values_to = "value"
-  ) %>% 
-  ggplot() + 
-  geom_col(aes(section, value)) + 
-  theme(axis.text.x = element_text(angle = 90)) + 
-  facet_wrap(.~ index, scales = "free_y", ncol = 1)
-
-sec.art.dtm <- sec.tfidf %>% 
-  rename(section_id = section) %>% 
-  pivot_wider(
-    id_cols = section_id, names_from = word, values_from = n, values_fill = 0
-  )
-
-# 计算大概需要花两分钟
-sec.art.cosine <- GetCosine(sec.art.dtm)
-# 补全矩阵另一半
-sec.art.cosine <- rbind(
-  sec.art.cosine, 
-  tibble(doc_a = sec.art.cosine$doc_b, 
-         doc_b = sec.art.cosine$doc_a, 
-         csim = sec.art.cosine$csim)
-) 
-# 补全各主题和自己的相似性的部分
-sec.art.cosine <- rbind(
-  sec.art.cosine, 
-  tibble(doc_a = unique(sec.art.cosine$doc_a), 
-         doc_b = unique(sec.art.cosine$doc_a), 
-         csim = 1)
-)
-
-# 可视化
-ggplot(sec.art.cosine) + geom_tile(aes(x = doc_a, y = doc_b, fill = csim)) + 
-  scale_fill_gradientn(colors = terrain.colors(10)) + 
-  theme(axis.text.x = element_text(angle = 90))
-
-# 计算各section和其他section之间的相似性平均值、中值和标准差
-sec.art.cosine %>% 
-  group_by(doc_a) %>% 
-  summarise(mean = mean(csim), median = median(csim), sd = sd(csim)) %>% 
-  ungroup() %>% 
-  # 可视化各统计指标
-  pivot_longer(cols = c("mean", "median", "sd"), names_to = "index") %>% 
-  rename(section_id = doc_a) %>% 
-  ggplot() + 
-  geom_col(aes(section_id, value)) + 
-  theme(axis.text.x = element_text(angle = 90)) + 
-  facet_wrap(.~ index, scale = "free_y", ncol = 1)
+art.topic <- tidy(art.lda, matrix = "gamma") %>% 
+  rename(art_doi = document) %>% 
+  left_join(select(match.info, section, doi), by = c("art_doi" = "doi"))
 
