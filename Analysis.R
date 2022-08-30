@@ -175,9 +175,12 @@ GetDiv <- function(x) {
 # 函数：计算文本之间的cosine相似度
 # 备注：改编自网上的代码（https://stackoverflow.com/questions/52720178/cosine-similarity-of-documents）
 # 参数：
-# df：不带section或者doi信息的纯文档-词频矩阵
-# names.doc：用于对比的文档名称
-GetCosine <- function(df, names.doc) {
+# x：数据框，第一列为文档编号，后续列为文档-词频矩阵
+GetCosine <- function(x) {
+  # 提取所需信息
+  df <- x[2: ncol(x)]
+  names.doc <- x[[1]]
+  
   # Vector lengths
   vl <- sqrt(rowSums(df*df))
   
@@ -412,4 +415,25 @@ art.topic.sankey.num %>%
     node = list(label = c(unique(.$section), 1:6, "unclear")),
     link = list(source = .$node_1, target = .$node_2, value =  .$freq)
   )
+
+#. 机器学习分类和section性质关系 ----
+# 各section机器学习分类结果正确率
+ml.cor.rate <- ab_svm_res %>% 
+  group_by(section) %>% 
+  summarise(cor_rate = sum(correct) / n()) %>% 
+  ungroup()
+# 漏洞：ab_svm_res来自机器学习分类脚本
+
+# 和其他主题的相似性越低，分类越准确？
+artsec.cosine <- art.topic.sankey.gamma %>% 
+  pivot_wider(id_cols = "section", names_from = topic, 
+              values_from = gamma_prop, values_fill = 0) %>%  
+  GetCosine() %>% 
+  group_by(doc_a) %>% 
+  summarise(csim = mean(csim)) %>% 
+  ungroup() %>% 
+  rename(section = doc_a)
+ml.cor.rate %>% 
+  left_join(artsec.cosine, by = "section") %>% 
+  ggplot() + geom_point(aes(csim, cor_rate))
 
