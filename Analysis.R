@@ -474,3 +474,27 @@ ml.cor.rate %>%
   ) %>% 
   ggplot() + geom_point(aes(richness, cor_rate))
 
+# 计算各个section内各文章的平均相似性
+# 计算所有文章两两之间的差异可能很困难，但是计算每个section内部文章两两之间的差异就比较简单
+art.meancsim <- numeric()
+for (i in unique(art.topic$section)) {
+  art.meancsim <- c(
+    art.meancsim, 
+    art.topic %>% 
+      subset(section == i) %>% 
+      pivot_wider(id_cols = art_doi, names_from = topic, 
+                  values_from = gamma, values_fill = 0) %>% 
+      GetCosine() %>% 
+      pull(csim) %>% 
+      mean()
+  )
+}
+art.meancsim <- tibble(
+  section = unique(art.topic$section), 
+  csim_mean = art.meancsim
+)
+# 查看机器分类结果准确率和section内部相似性之间的关系
+ml.cor.rate %>% 
+  left_join(art.meancsim, by = "section") %>% 
+  ggplot() + geom_point(aes(csim_mean, cor_rate))
+
