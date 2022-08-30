@@ -314,3 +314,102 @@ art.topic <- tidy(art.lda, matrix = "gamma") %>%
   rename(art_doi = document) %>% 
   left_join(select(match.info, section, doi), by = c("art_doi" = "doi"))
 
+# Section和LDA主题对应桑基图
+# 用桑基图看各section被分到各LDA主题的概率之和及概率所占比例
+art.topic.sankey.gamma <-  
+  art.topic %>% 
+  group_by(section, topic) %>% 
+  summarise(gamma = sum(gamma)) %>% 
+  mutate(gamma_prop = gamma / sum(gamma)) %>% 
+  ungroup() %>% 
+  mutate(node_1 = case_when(
+    section == "Economic and Business Aspects of Sustainability" ~ 0,
+    section == "Energy Sustainability" ~ 1,
+    section == "Environmental Sustainability and Applications" ~ 2,
+    section == "Geography and Sustainability" ~ 3,
+    section == "Sustainable Agriculture" ~ 4,
+    section == "Sustainable Education and Approaches" ~ 5,
+    section == "Sustainable Engineering and Science" ~ 6,
+    section == "Sustainable Management" ~ 7,
+    section == "Sustainable Transportation" ~ 8,
+    section == "Sustainable Urban and Rural Development" ~ 9,
+    section == "Tourism, Culture, and Heritage" ~ 10, 
+  ), node_2 = case_when(
+    topic == "1" ~ 11, 
+    topic == "2" ~ 12, 
+    topic == "3" ~ 13, 
+    topic == "4" ~ 14, 
+    topic == "5" ~ 15, 
+    topic == "6" ~ 16 
+  ))
+# 分别对概率和概率占比作图
+art.topic.sankey.gamma %>% 
+  plot_ly(
+    type = "sankey",
+    orientation = "h",
+    node = list(label = c(unique(.$section), 1:6)),
+    link = list(source = .$node_1, target = .$node_2, value =  .$gamma)
+  )
+art.topic.sankey.gamma %>% 
+  plot_ly(
+    type = "sankey",
+    orientation = "h",
+    node = list(label = c(unique(.$section), 1:6)),
+    link = list(source = .$node_1, target = .$node_2, value =  .$gamma_prop)
+  )
+
+# 用桑基图看各section被分到各LDA主题的文章数量
+art.topic.sankey.num <- art.topic %>% 
+  # 选出每个文章所属概率最高的主题
+  group_by(art_doi) %>% 
+  top_n(1, gamma) %>%
+  ungroup() %>% 
+  # 如果对应最高概率大于80%则判断所属
+  mutate(topic = case_when(
+    gamma < 0.55 ~ "unclear", 
+    TRUE ~ as.character(topic)
+  )) %>%
+  # 加入section信息并且根据section分组统计各section被归入各LDA主题的文章数
+  group_by(section, topic) %>% 
+  summarise(n = n()) %>% 
+  mutate(freq = n / sum(n)) %>% 
+  ungroup() %>% 
+  # 生成桑基图数据
+  mutate(node_1 = case_when(
+    section == "Economic and Business Aspects of Sustainability" ~ 0,
+    section == "Energy Sustainability" ~ 1,
+    section == "Environmental Sustainability and Applications" ~ 2,
+    section == "Geography and Sustainability" ~ 3,
+    section == "Sustainable Agriculture" ~ 4,
+    section == "Sustainable Education and Approaches" ~ 5,
+    section == "Sustainable Engineering and Science" ~ 6,
+    section == "Sustainable Management" ~ 7,
+    section == "Sustainable Transportation" ~ 8,
+    section == "Sustainable Urban and Rural Development" ~ 9,
+    section == "Tourism, Culture, and Heritage" ~ 10, 
+  ), node_2 = case_when(
+    topic == "1" ~ 11, 
+    topic == "2" ~ 12, 
+    topic == "3" ~ 13, 
+    topic == "4" ~ 14, 
+    topic == "5" ~ 15, 
+    topic == "6" ~ 16, 
+    topic == "unclear" ~ 17
+  ))
+
+art.topic.sankey.num  %>% 
+  plot_ly(
+    type = "sankey",
+    orientation = "h",
+    node = list(label = c(unique(.$section), 1:6, "unclear")),
+    link = list(source = .$node_1, target = .$node_2, value =  .$n)
+  )
+# 按照比例数据作桑基图
+art.topic.sankey.num %>% 
+  plot_ly(
+    type = "sankey",
+    orientation = "h",
+    node = list(label = c(unique(.$section), 1:6, "unclear")),
+    link = list(source = .$node_1, target = .$node_2, value =  .$freq)
+  )
+
